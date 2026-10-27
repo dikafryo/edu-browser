@@ -621,6 +621,8 @@ function bindSettingsEvents() {
 }
 
 async function init() {
+  // 옛 판이 실행 중이면 여기서 새 판으로 바뀌고 패널도 다시 열린다(update.js)
+  if (await reloadIfUpdated()) return;
   await loadSettings();
   // 예전 판이 이 PC에 남겨 둔 공문 작성 임시본(공문 내용)은 더 쓰지 않으므로 지운다
   chrome.storage.local.remove('draft');

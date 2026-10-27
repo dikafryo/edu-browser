@@ -21,14 +21,21 @@ python -m gongmun
 
 사용자는 `gongmun-helper\실행.bat` 을 더블클릭한다(처음이면 venv 를 만들고 설치까지 한다). 가상환경 폴더 이름은 `venv` 로 통일한다.
 
-확장은 `chrome://extensions` → 개발자 모드 → `pen-browser/` 로드. `background.js` 가 1분마다 폴더의 `manifest.json` 버전을 보고 다르면 `chrome.runtime.reload()` 한다 — **버전을 올리면 새로고침 없이 반영된다.** (이 기능이 없는 v26.1027.1 이전 판은 한 번 손으로 새로고침해야 한다.) 폴더의 manifest 가 깨져 있으면 다시 불러오다 확장이 꺼질 수 있으니 JSON 을 확인하고 버전을 올릴 것.
+확장은 `chrome://extensions` → 개발자 모드 → `pen-browser/` 로드. **버전을 올리면 새로고침 없이 반영된다** (`update.js`):
+- 압축해제 확장은 페이지 파일을 그때그때 폴더에서 읽는다. 그래서 `sidepanel.html` 이 열릴 때 폴더의 manifest 버전과 실행 중인 버전이 다르면 `chrome.runtime.reload()` 한다 — **옛 판(이 기능이 없는 판)이 실행 중이어도 패널을 한 번 열면 새 판이 된다**(시험 C)
+- `background.js` 도 1분마다(alarms) 같은 확인을 한다
+- 폴더의 manifest 가 깨져 있으면 다시 불러오다 확장이 꺼질 수 있으니 JSON 을 확인하고 버전을 올릴 것
+- 크롬 확장 화면(`chrome://`)과 `chrome-extension://` 페이지는 브라우저 자동화 도구로 열 수 없다. 반영 확인은 아래 `live_reload.py` 로 한다
 
 ## 시험
 
 ```powershell
 cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로(16개)
 python tests\pen-browser\run.py                                         # 확장 패널 기능(headless 크롬, 가짜 chrome API)
+python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
+
+`live_reload.py` 는 임시 프로필의 headless **엣지**에 확장을 올린다 — 크롬 137 이후 정식판은 `--load-extension` 을 무시한다. A 올라옴·패널 / B 폴더 버전이 바뀌면 1분 안에 다시 불러옴 / C 옛 판(태그 `v26.1027.1`)에서 패널을 열면 새 판이 됨.
 
 `tests/pen-browser/run.py` 는 실제 `sidepanel.html` 본문과 스크립트를 `stub_chrome.js` 와 함께 연다. 화면 요소 ID 를 바꾸면 `run_tests.js` 도 고칠 것. headless 크롬은 창 너비가 500px 아래로 안 줄어든다 — 좁은 패널 모양은 360px iframe 에 넣어 확인한다.
 

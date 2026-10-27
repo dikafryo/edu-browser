@@ -37,7 +37,10 @@
 ```powershell
 cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests
 python tests\pen-browser\run.py
+python tests\pen-browser\live_reload.py   # 확장을 실제로 올려 새 판 반영 확인 (pip install websocket-client)
 ```
+
+크롬 확장은 폴더가 새 판으로 바뀌면 패널을 열 때(또는 1분 안에) 저절로 새 판을 불러옵니다.
 
 ## 버전
 

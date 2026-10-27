@@ -15,7 +15,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXT_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "pen-browser"))
-SCRIPTS = ["sidepanel.js", "inbox.js", "neis.js", "diagnose.js"]  # sidepanel.html 과 같은 순서
+SCRIPTS = ["update.js", "sidepanel.js", "inbox.js", "neis.js", "diagnose.js"]  # sidepanel.html 과 같은 순서
 CHROME_PATHS = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",

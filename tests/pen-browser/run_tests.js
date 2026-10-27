@@ -62,7 +62,18 @@
   const reply = replyRequestText({ from: '교육청', title: '자료 제출', deadline: '11. 3.', todo: ['자료 작성', '제출'] });
   check('reply request text', reply.includes('관련: 교육청 「자료 제출」') && reply.includes('제출 마감: 11. 3.') && reply.split('\n').length === 4, reply);
 
-  // 8. 기타
+  // 8. 새 판 반영 (update.js)
+  const realFetch = window.fetch;
+  window.fetch = async () => ({ json: async () => ({ version: 'test' }) });
+  check('same version -> no reload', (await reloadIfUpdated()) === false && !window.__reloaded, null);
+  window.fetch = async () => ({ json: async () => ({ version: 'newer' }) });
+  check('newer folder version -> reload', (await reloadIfUpdated()) === true && window.__reloaded === true, null);
+  window.fetch = async () => { throw new Error('reading'); };
+  window.__reloaded = false;
+  check('unreadable manifest -> keep running', (await reloadIfUpdated()) === false && !window.__reloaded, null);
+  window.fetch = realFetch;
+
+  // 9. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
   check('helper pill shows offline', $('helperStatus').textContent === '도우미 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);

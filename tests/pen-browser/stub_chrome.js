@@ -14,7 +14,7 @@ window.chrome = {
   windows: { getAll: async () => [], getCurrent: async () => ({ id: 1 }), update: async () => {} },
   tabGroups: { query: async () => [], update: async () => {} },
   scripting: { executeScript: async () => { throw new Error('no scripting in test'); } },
-  runtime: { onMessage: { addListener: () => {} }, getManifest: () => ({ version: 'test' }), id: 'test' },
+  runtime: { onMessage: { addListener: () => {} }, getManifest: () => ({ version: 'test' }), getURL: (p) => p, reload: () => { window.__reloaded = true; }, id: 'test' },
 };
 // 도우미·Ollama 에 실제로 요청하지 않게 막는다
 window.fetch = async () => { throw new Error('offline in test'); };
