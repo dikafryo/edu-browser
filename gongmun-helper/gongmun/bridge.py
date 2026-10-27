@@ -22,6 +22,9 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from gongmun.config import VERSION, PEN_BRIDGE_PORT, PEN_BROWSER_EXTENSION_IDS
 
 MAX_BODY_BYTES = 64 * 1024  # 공문 요청 글은 이보다 훨씬 짧다
+# 너무 긴 요청도 이만큼까지는 읽어 버린 뒤 답한다. 읽지 않고 답하면 연결이 끊겨 확장이 '도우미 꺼짐'으로 잘못 안내한다
+DRAIN_LIMIT_BYTES = 1024 * 1024
+TOO_LONG = object()
 ALLOWED_ORIGINS = {f"chrome-extension://{ext_id}" for ext_id in PEN_BROWSER_EXTENSION_IDS}
 
 
@@ -62,6 +65,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(403, {"ok": False, "error": "PEN 브라우저에서만 쓸 수 있습니다."})
             return
         request_text = self._read_request_text()
+        if request_text is TOO_LONG:
+            self._reply(413, {"ok": False, "error": "보낸 내용이 너무 깁니다. 핵심만 줄여서 다시 보내 주세요."})
+            return
         if request_text is None:
             self._reply(400, {"ok": False, "error": "보낸 내용을 읽지 못했습니다. 다시 보내 주세요."})
             return
@@ -76,8 +82,11 @@ class _Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return None
-        if length <= 0 or length > MAX_BODY_BYTES:
+        if length <= 0 or length > DRAIN_LIMIT_BYTES:
             return None
+        if length > MAX_BODY_BYTES:
+            self.rfile.read(length)
+            return TOO_LONG
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
         except (UnicodeDecodeError, ValueError):

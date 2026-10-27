@@ -38,12 +38,13 @@ STEP_PAUSE_SEC = 1.2   # 클릭 뒤 화면이 후속 요청을 마칠 틈
 NO_RESULT_ALERT = "조회된 내용이 없"
 
 ERROR_MESSAGES = {
-    "NO_WINDOW": "공문 작성 창을 찾지 못했습니다. K-에듀파인에서 [공문 작성] 창을 연 뒤 다시 눌러 주세요.",
+    "NO_WINDOW": "공문 작성 창을 찾지 못했습니다. K-에듀파인 문서관리 > 기안 > 공용서식에서 서식을 눌러 공문 작성 창을 연 뒤 다시 눌러 주세요.",
     "NO_DIALOG": "지정 창이 열리지 않았습니다. 공문 작성 창이 다 뜬 뒤 다시 눌러 주세요.",
     "LINE_NOT_FOUND": "K-에듀파인 '나의 결재선'에 그 이름이 없습니다. 목록 설정의 결재선 이름을 나의 결재선 이름과 똑같이 적어 주세요.",
     "TASK_NOT_FOUND": "과제카드를 찾지 못했습니다. 열려 있는 과제카드 선택 창에서 직접 골라 [확인]을 눌러 주세요.",
     "PAGE_BLOCKED": "K-에듀파인 창에 안내 문구가 떠서 멈췄습니다. 그 문구를 확인하고 지정 창에서 마저 진행해 주세요.",
     "EMPTY_LIST": "넣을 수신처가 없습니다.",
+    "MESSAGE_OPEN": "공문 작성 창에 안내창이 떠 있습니다. 그 안내창에 먼저 답한 뒤 다시 눌러 주세요.",
     "SCRIPT": "공문 작성 창에서 작업하다 문제가 생겼습니다. 창이 다 뜬 뒤 다시 눌러 주세요.",
 }
 
@@ -138,6 +139,32 @@ def is_draft_open():
     return find_document(DRAFT_URL) is not None
 
 
+def pending_message():
+    """공문 작성 프로그램이 띄운 안내창(웹 페이지 메시지)의 글자. 없으면 빈 문자열.
+
+    예: 서식을 열 때 '자동저장문서를 읽어오시겠습니까?' — 사용자의 자동저장본이 걸린 질문이라
+    도우미가 대신 답하지 않는다. 안내창이 뜬 채로 입력하면 그 뒤 화면이 바뀌어 엉뚱한 곳에 들어갈 수 있다.
+    """
+    for top in _wxs_windows():
+        if win32gui.GetClassName(top) != "#32770":
+            continue
+        children = _children(top)
+        classes = {win32gui.GetClassName(h) for h in children}
+        # 공문 작성 창 자체도 #32770 이다. IE 화면이 들어 있으면 안내창이 아니라 작성 창이다
+        if "Internet Explorer_Server" in classes or "Button" not in classes:
+            continue
+        texts = [win32gui.GetWindowText(h) for h in children if win32gui.GetClassName(h) == "Static"]
+        message = " ".join(text.strip() for text in texts if text.strip())
+        if message:
+            return message
+    return ""
+
+
+def draft_status():
+    """창 확인 버튼용: {"open": 공문 작성 창이 있는지, "message": 떠 있는 안내창 글자}."""
+    return {"open": is_draft_open(), "message": pending_message()}
+
+
 def dismiss_alert(text):
     """메시지에 text 가 들어간 페이지 알림창의 [확인]을 누른다."""
     for top in _wxs_windows():
@@ -215,6 +242,9 @@ def invoke_action(doc, call):
 
 
 def _draft_document():
+    message = pending_message()
+    if message:
+        raise EdufineError("MESSAGE_OPEN", message)
     doc = find_document(DRAFT_URL)
     if doc is None:
         raise EdufineError("NO_WINDOW")

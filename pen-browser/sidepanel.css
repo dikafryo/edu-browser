@@ -142,10 +142,22 @@ pre {
 .notice[data-kind="error"] { background: var(--color-error-bg); color: var(--color-error); }
 .notice[data-kind="info"] { background: var(--color-accent-soft); color: var(--color-accent-hover); }
 
-
-
 .action-list .btn { margin-top: var(--space-2); }
 
+/* 나이스 복무·출장 입력 */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); border: 0; padding: 0; margin: var(--space-2) 0 0; }
+.seg label { display: flex; gap: var(--space-2); align-items: center; margin: 0; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius); font-weight: 600; font-size: 14px; cursor: pointer; }
+.seg label:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-hover); }
+.seg input { width: auto; margin: 0; }
+.field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-2); }
+.check-row { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
+.check-row label { display: flex; gap: var(--space-2); align-items: center; margin: 0; font-weight: 400; }
+.check-row input { width: auto; margin: 0; }
+.result-list { list-style: none; padding: 0; margin: var(--space-2) 0 0; font-size: 14px; }
+.result-list li { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border); white-space: pre-line; }
+.result-list li[data-kind="ok"] { color: var(--color-ok); }
+.result-list li[data-kind="error"] { color: var(--color-error); }
+.result-list li[data-kind="info"] { color: var(--color-text-sub); }
 
 .doc-list { display: grid; gap: var(--space-2); list-style: none; padding: 0; margin: var(--space-2) 0 0; }
 .doc-item { padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); }

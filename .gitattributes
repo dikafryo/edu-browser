@@ -1,0 +1,2 @@
+# 윈도우 배치 파일은 CRLF 여야 goto·라벨이 제대로 동작한다
+*.bat text eol=crlf

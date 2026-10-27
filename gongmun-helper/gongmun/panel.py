@@ -124,7 +124,7 @@ class GongmunPanel(QWidget):
         outer.addWidget(scroll)
 
         layout.addWidget(self._help(
-            "K-에듀파인 [공문 작성] 창을 열어 두고 쓰세요. "
+            "K-에듀파인 공문 작성 창을 열어 두고 쓰세요(문서관리 > 기안 > 공용서식에서 서식을 누르면 열립니다). "
             "AI 초안은 목록 설정의 내 Ollama 로만 보내고, 저장·결재올림은 직접 누릅니다. "
             "크롬의 PEN 브라우저에서 [공문작성 도우미로 보내기]를 누르면 ①칸이 저절로 채워집니다."))
 
@@ -333,6 +333,12 @@ class GongmunPanel(QWidget):
             self.show_notice("ok", f"수신자 {result['added']}곳을 넣고 확인까지 눌렀습니다.")
 
     def check_window(self):
-        self._run("공문 작성 창을 찾는 중입니다.", draft_window.is_draft_open, (),
-                  lambda found: self.show_notice("ok", "공문 작성 창을 찾았습니다.") if found
-                  else self.show_notice("error", draft_window.ERROR_MESSAGES["NO_WINDOW"]))
+        self._run("공문 작성 창을 찾는 중입니다.", draft_window.draft_status, (), self._on_status)
+
+    def _on_status(self, status):
+        if status["message"]:
+            self.show_notice("warn", f"{draft_window.ERROR_MESSAGES['MESSAGE_OPEN']}\n안내창 내용: {status['message']}")
+        elif status["open"]:
+            self.show_notice("ok", "공문 작성 창을 찾았습니다. ③의 버튼으로 넣을 수 있습니다.")
+        else:
+            self.show_notice("error", draft_window.ERROR_MESSAGES["NO_WINDOW"])

@@ -108,15 +108,23 @@ function ollamaErrorMessage(status) {
   return `AI 서버가 오류를 알려 왔습니다(번호 ${status}). 잠시 후 다시 시도해 주세요.`;
 }
 
+// 주소가 비어 있으면 확장 자신의 주소로 요청이 가 엉뚱한 오류가 나므로 먼저 막는다
+function ollamaBaseUrl() {
+  const url = trimSlash(settings.ai.ollamaUrl);
+  if (!/^https?:\/\//.test(url)) throw new Error('설정 > AI 연결에서 Ollama 주소(http://로 시작)를 먼저 적어 주세요.');
+  return url;
+}
+
 async function listOllamaModels() {
-  const response = await fetchWithTimeout(`${trimSlash(settings.ai.ollamaUrl)}/api/tags`, {}, OLLAMA_OFFLINE);
+  const response = await fetchWithTimeout(`${ollamaBaseUrl()}/api/tags`, {}, OLLAMA_OFFLINE);
   if (!response.ok) throw new Error(ollamaErrorMessage(response.status));
   const data = await response.json();
   return [...new Set((data.models || []).map((model) => model.name))];
 }
 
 async function callOllama(system, user) {
-  const { ollamaUrl, ollamaModel } = settings.ai;
+  const { ollamaModel } = settings.ai;
+  const ollamaUrl = ollamaBaseUrl();
   if (!ollamaModel) throw new Error('설정에서 사용할 AI 모델을 먼저 골라 주세요.');
   const body = {
     model: ollamaModel,
@@ -125,7 +133,7 @@ async function callOllama(system, user) {
     options: { temperature: 0.3, num_ctx: AI_CONTEXT_TOKENS },
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
   };
-  const response = await fetchWithTimeout(`${trimSlash(ollamaUrl)}/api/chat`, {
+  const response = await fetchWithTimeout(`${ollamaUrl}/api/chat`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }, OLLAMA_OFFLINE);
   if (!response.ok) throw new Error(ollamaErrorMessage(response.status));

@@ -1,6 +1,7 @@
 /* PEN 브라우저 – 결재·공람 점검
-   지금 보고 있는 K-에듀파인 화면의 글자를 읽어 맥북 Ollama 또는 PenGPT에 보내고,
-   할 일·마감일·중요도를 정리해 보여 준다. 공문 분석 결과는 회신 공문 요청으로 공문작성 도우미에 넘길 수 있다.
+   K-에듀파인 결재대기·공람대기 목록은 화면의 표(#tbList)를 그대로 읽는다(AI 가 목록을 짐작하지 않는다).
+   공람 중 내가 꼭 볼 문서 고르기와 연 공문 분석만 맥북 Ollama 또는 PenGPT 에 맡긴다.
+   공문 분석 결과는 회신 공문 요청으로 공문작성 도우미에 넘길 수 있다.
    (sidepanel.js의 settings·askAi·handleSendToHelper 등을 함께 쓴다) */
 
 /* ===================== 1. 설정 ===================== */
@@ -32,6 +33,16 @@ const GONGRAM_PROMPT = [
   '{"docs":[{"title":"제목","from":"보낸 곳","date":"날짜","important":false,"reason":"그렇게 판단한 까닭 한 줄"}]}',
 ].join('\n');
 
+// 공람은 목록 표에서 읽은 제목·보낸 곳만 AI에 보낸다(공문 본문은 보내지 않는다)
+const GONGRAM_PICK_PROMPT = [
+  '너는 교육청 주무관의 업무 비서다. 사용자는 공람 문서 목록(번호. 제목 / 보낸 곳)을 준다.',
+  '사용자의 담당 업무를 기준으로 문서마다 직접 확인해야 하는지 판단한다.',
+  '확인 필요(important=true): 담당 업무와 관련된 것, 제출·회신·참석·조치를 요구하는 것, 마감이 있는 것, 전 직원이 꼭 알아야 하는 것.',
+  '참고만(important=false): 단순 알림·홍보·행사 안내, 다른 업무 담당자용 문서.',
+  '반드시 아래 JSON 하나만 출력한다. 목록의 모든 번호를 빠짐없이 넣는다.',
+  '{"picks":[{"no":1,"important":false,"reason":"그렇게 판단한 까닭 한 줄"}]}',
+].join('\n');
+
 const DOC_PROMPT = [
   ...INBOX_COMMON_RULES,
   '할 일: 열려 있는 공문 한 건을 읽고 사용자가 해야 할 일을 정리한다.',
@@ -46,15 +57,19 @@ const INBOX_MODES = {
     name: '결재할 문서',
     prompt: APPROVAL_PROMPT,
     sortKey: 'urgent',
+    menuPath: '문서관리 > 결재 > 결재대기',
     notFound: '결재할 문서를 찾지 못했습니다. K-에듀파인의 결재할 문서(긴급) 목록 화면을 앞에 띄웠는지 확인해 주세요.',
   },
   gongram: {
     name: '공람 문서',
     prompt: GONGRAM_PROMPT,
     sortKey: 'important',
+    menuPath: '문서관리 > 공람 > 공람대기',
     notFound: '공람 문서를 찾지 못했습니다. K-에듀파인의 공람 목록 화면을 앞에 띄웠는지 확인해 주세요.',
   },
 };
+// 목록 표의 머리글로 어떤 목록인지 알아본다. 공람대기 표에만 이 머리글이 있다
+const GONGRAM_HEADS = ['공람도착일시', '공람지정자'];
 
 /* ===================== 2. 데이터 처리 ===================== */
 // 같은 줄이 연달아 나오는 표 머리글·빈 줄을 줄여 AI에 보낼 글자 수를 아낀다
@@ -115,6 +130,103 @@ async function askAiAboutPage(system, preferPopup) {
   const prompt = buildInboxPrompt(page.text);
   const answer = await askAi(system, prompt);
   return { result: parseInboxJson(answer), cut: page.cut };
+}
+
+// ---------- K-에듀파인 목록 표 ----------
+// K-에듀파인 화면 안(모든 프레임)에서 실행된다: 목록 표의 머리글과 칸 글자만 읽는다
+function readListTableInPage() {
+  const table = document.querySelector('#tbList');
+  if (!table) return null;
+  const heads = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent.replace(/\s+/g, ''));
+  const rows = Array.from(table.querySelectorAll('tbody tr')).filter((tr) => tr.cells.length === heads.length).map((tr) => {
+    const row = {};
+    heads.forEach((head, index) => { if (head) row[head] = tr.cells[index].textContent.replace(/\s+/g, ' ').trim(); });
+    row.urgentMark = /긴급/.test(tr.textContent) || Array.from(tr.querySelectorAll('img')).some((img) => /긴급/.test(img.alt || img.title || ''));
+    return row;
+  });
+  return { heads: heads.filter(Boolean), rows };
+}
+
+// K-에듀파인 맨 위의 결재(긴급)·공람·문서진행·발송대기 건수 (MAIN world 에서 실행)
+function readEdufineCountsInPage() {
+  try {
+    const box = nexacro.getApplication().mainframe.MainVFrameSet.TopFrame.form.divTopGrp.form.divNtzn.form.divNtznDtl.form;
+    return ['AAB01', 'AAB02', 'AAB03', 'AAB04']
+      .map((id) => (box[id] ? String(box[id].text).replace(/<[^>]*>/g, '').replace(/[|\s]+/g, ' ').trim() : ''))
+      .filter(Boolean);
+  } catch (error) {
+    return null;
+  }
+}
+
+async function findEdufineTab() {
+  const site = SITES.find((item) => item.id === 'edufine');
+  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (active && matchSite(active, site)) return active;
+  const tabs = await chrome.tabs.query({});
+  return tabs.find((tab) => matchSite(tab, site)) || null;
+}
+
+function tableMode(table) {
+  return GONGRAM_HEADS.some((head) => table.heads.includes(head)) ? 'gongram' : 'approval';
+}
+
+// 열린 화면 탭마다 표가 남아 있을 수 있어, 고른 점검 종류와 머리글이 맞는 표를 쓴다
+async function readListTable(mode) {
+  const tab = await findEdufineTab();
+  if (!tab) return null;
+  let frames;
+  try {
+    frames = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: readListTableInPage });
+  } catch (error) {
+    return null;
+  }
+  const tables = frames.map((frame) => frame.result).filter((table) => table && table.heads.includes('제목'));
+  return tables.find((table) => tableMode(table) === mode) || null;
+}
+
+function rowToDoc(row) {
+  return {
+    title: row['제목'] || '',
+    from: row['기안(발송)부서'] || row['발송기관'] || '',
+    person: row['기안(담당)자'] || row['공람지정자'] || '',
+    date: row['공람도착일시'] || row['기안일시'] || '',
+    kind: row['문서종류'] || '',
+    urgent: Boolean(row.urgentMark),
+    important: false,
+    reason: '',
+    action: '',
+    deadline: '',
+    summary: '',
+    todo: [],
+  };
+}
+
+function buildGongramPickPrompt(docs) {
+  return [
+    `오늘 날짜: ${formatToday()}`,
+    `내 담당 업무: ${settings.myDuties || '(미입력)'}`,
+    '',
+    '[공람 목록]',
+    ...docs.map((doc, index) => `${index + 1}. ${doc.title} / ${doc.from}`),
+  ].join('\n');
+}
+
+// AI 가 답하지 못하면 모두 '확인 필요'로 두어 놓치는 문서가 없게 한다
+async function judgeGongram(docs) {
+  try {
+    const answer = await askAi(GONGRAM_PICK_PROMPT, buildGongramPickPrompt(docs));
+    const picks = parseInboxJson(answer).picks || [];
+    docs.forEach((doc, index) => {
+      const pick = picks.find((item) => Number(item.no) === index + 1);
+      doc.important = pick ? pick.important === true : true;
+      doc.reason = pick ? textOf(pick.reason) : 'AI가 판단하지 않은 문서입니다.';
+    });
+    return '';
+  } catch (error) {
+    docs.forEach((doc) => { doc.important = true; doc.reason = ''; });
+    return `AI가 중요도를 고르지 못해 모두 '확인 필요'로 보여 줍니다. (${error.message})`;
+  }
 }
 
 function textOf(value) {
@@ -190,7 +302,7 @@ function docKind(doc, mode) {
 }
 
 function docMeta(doc) {
-  return [doc.from, doc.date, doc.deadline && `마감 ${doc.deadline}`].filter(Boolean).join(' · ');
+  return [doc.kind, doc.from, doc.person, doc.date, doc.deadline && `마감 ${doc.deadline}`].filter(Boolean).join(' · ');
 }
 
 function makeDocItem(doc, mode) {
@@ -250,15 +362,58 @@ function cutNotice(cut) {
   return cut ? ' 화면 글자가 많아 앞부분만 읽었습니다.' : '';
 }
 
+function renderCounts(counts) {
+  $('edufineCounts').hidden = !counts || counts.length === 0;
+  $('edufineCounts').textContent = counts ? `K-에듀파인 지금: ${counts.join(' · ')}` : '';
+}
+
+async function refreshEdufineCounts() {
+  const tab = await findEdufineTab();
+  if (!tab) return;
+  try {
+    const [frame] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: readEdufineCountsInPage });
+    renderCounts(frame && frame.result);
+  } catch (error) {
+    renderCounts(null);
+  }
+}
+
+// 목록 표를 찾으면 표 그대로 보여 주고, 공람만 AI 가 중요도를 고른다
+async function checkFromTable(mode, table) {
+  const config = INBOX_MODES[mode];
+  const docs = table.rows.map(rowToDoc).filter((doc) => doc.title);
+  if (docs.length === 0) {
+    renderInbox(mode, []);
+    showNotice($('inboxMsg'), 'ok', `${config.name}가 없습니다. (K-에듀파인 ${config.menuPath} 화면 기준)`);
+    return;
+  }
+  let aiProblem = '';
+  if (mode === 'gongram') {
+    showNotice($('inboxMsg'), 'info', `공람 ${docs.length}건을 읽었습니다. ${aiName()}가 내가 꼭 볼 문서를 고르는 중입니다…`);
+    aiProblem = await judgeGongram(docs);
+  }
+  await markNewDocs(mode, docs);
+  renderInbox(mode, sortDocs(docs, config.sortKey));
+  if (aiProblem) showNotice($('inboxMsg'), 'warn', aiProblem);
+  else showNotice($('inboxMsg'), 'ok', `K-에듀파인 ${config.menuPath} 목록을 그대로 읽었습니다. 목록이 오래됐으면 그 화면에서 [조회]를 누른 뒤 다시 눌러 주세요.`);
+}
+
 async function handleCheckList(mode, button) {
   const config = INBOX_MODES[mode];
-  showNotice($('inboxMsg'), 'info', `${aiName()}가 ${config.name} 목록을 읽는 중입니다. 30초~1분쯤 걸릴 수 있습니다…`);
   await withBusy(button, '처리 중…', async () => {
     try {
+      refreshEdufineCounts();
+      const table = await readListTable(mode);
+      if (table) {
+        await checkFromTable(mode, table);
+        return;
+      }
+      // 목록 표가 없는 화면이면 예전처럼 화면 글자를 AI 가 읽는다
+      showNotice($('inboxMsg'), 'info', `K-에듀파인 ${config.menuPath} 화면을 찾지 못해 ${aiName()}가 지금 화면 글자를 읽는 중입니다. 30초~1분쯤 걸릴 수 있습니다…`);
       const { result, cut } = await askAiAboutPage(config.prompt, false);
       const docs = (Array.isArray(result.docs) ? result.docs : []).map(cleanDoc).filter((doc) => doc.title);
       if (docs.length === 0) {
-        showNotice($('inboxMsg'), 'warn', config.notFound);
+        showNotice($('inboxMsg'), 'warn', `${config.notFound} (${config.menuPath} 화면을 열면 더 정확하게 읽습니다.)`);
         return;
       }
       await markNewDocs(mode, docs);
@@ -284,6 +439,7 @@ async function handleAnalyzeDoc(button) {
 }
 
 function initInbox() {
+  refreshEdufineCounts();
   $('checkApprovalBtn').addEventListener('click', () => handleCheckList('approval', $('checkApprovalBtn')));
   $('checkGongramBtn').addEventListener('click', () => handleCheckList('gongram', $('checkGongramBtn')));
   $('analyzeDocBtn').addEventListener('click', () => handleAnalyzeDoc($('analyzeDocBtn')));
