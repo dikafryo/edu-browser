@@ -23,6 +23,8 @@ const DEFAULT_AI = {
 // 같은 PC에서 켜 둔 공문작성 도우미의 연결 통로. 포트를 바꾸면 gongmun/config.py 의 PEN_BRIDGE_PORT 도 같이 바꾼다
 const HELPER_URL = 'http://127.0.0.1:47615';
 const HELPER_TIMEOUT_MS = 5000;
+// 패널을 연 뒤에 도우미를 켜도 상태 표시가 따라오도록 주기적으로 다시 확인한다
+const HELPER_CHECK_MS = 15000;
 const HELPER_OFFLINE = '공문작성 도우미가 켜져 있지 않습니다. gongmun-helper 폴더의 실행.bat 을 더블클릭한 뒤 다시 눌러 주세요.';
 
 const PENGPT_SLOTS = [
@@ -632,6 +634,8 @@ async function init() {
   bindSettingsEvents();
   checkAiConnection();
   checkHelperConnection();
+  setInterval(checkHelperConnection, HELPER_CHECK_MS);
+  window.addEventListener('focus', checkHelperConnection);
 }
 
 init();
