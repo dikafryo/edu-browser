@@ -73,7 +73,38 @@
   check('unreadable manifest -> keep running', (await reloadIfUpdated()) === false && !window.__reloaded, null);
   window.fetch = realFetch;
 
-  // 9. 기타
+  // 9. 위쪽 메뉴 4개
+  const visibleTabs = () => TAB_IDS.filter((id) => !$(`tab-${id}`).hidden);
+  check('first open shows guide only', visibleTabs().join() === 'guide', visibleTabs());
+  document.querySelector('.tab-btn[data-tab="neis"]').click();
+  await new Promise((r) => setTimeout(r, 50));
+  check('neis tab selected', visibleTabs().join() === 'neis' && document.querySelector('.tab-btn[data-tab="neis"]').getAttribute('aria-selected') === 'true', visibleTabs());
+  const savedTab = await chrome.storage.local.get(PANEL_TAB_KEY);
+  check('tab remembered', savedTab[PANEL_TAB_KEY] === 'neis', savedTab);
+  check('four menu buttons', Array.from(document.querySelectorAll('.tab-btn')).map((b) => b.textContent).join('/') === '사용 방법/나이스/K-에듀파인/설정', null);
+  check('site settings removed', !document.getElementById('siteButtons') && !document.getElementById('siteSettings') && typeof openSite === 'undefined', null);
+
+  // 10. 24시간제 시각
+  check('24 hours, 5-minute steps', $('neisFromHour').options.length === 24 && $('neisFromHour').options[23].value === '23' && $('neisFromMinute').options.length === 12, null);
+  check('default times', readTime('neisFrom') === '09:00' && readTime('neisTo') === '18:00', [readTime('neisFrom'), readTime('neisTo')]);
+  $('neisFromHour').value = '14'; $('neisFromMinute').value = '30';
+  check('read 24h time', readNeisInput().fromTime === '14:30', readNeisInput().fromTime);
+
+  // 11. 업무포털 메뉴 누르기 (업무포털 화면 안에서 도는 함수)
+  const menu = document.createElement('div');
+  let clicked = '';
+  menu.innerHTML = '<a href="#">나이스 FAQ</a><a href="#"> 나이스 </a><a href="#">K-에듀파인</a>';
+  menu.querySelectorAll('a').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); clicked = a.textContent.trim(); }));
+  document.body.append(menu);
+  check('portal menu exact match', clickPortalMenu('나이스').found === true && clicked === '나이스', clicked);
+  check('portal menu missing', clickPortalMenu('없는메뉴').found === false, null);
+  menu.remove();
+  check('portal tab missing -> clear message', await openFromPortal('나이스', /neis/).then(() => false, (e) => /업무포털 탭을 찾지 못했습니다/.test(e.message)), null);
+
+  // 12. 도우미 PenGPT 대신 묻기: 도우미가 꺼져 있으면 아무것도 하지 않는다
+  check('relay idle when helper offline', (await relayHelperAiJob()) === undefined && $('helperAiMsg').hidden, null);
+
+  // 13. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
   check('helper pill shows offline', $('helperStatus').textContent === '도우미 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);

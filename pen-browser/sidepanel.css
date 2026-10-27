@@ -32,7 +32,7 @@
 
 body {
   margin: 0;
-  padding: var(--space-3);
+  padding: 0;
   background: var(--color-bg);
   color: var(--color-text);
   font: 15px/1.6 var(--font);
@@ -73,14 +73,39 @@ pre {
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ===================== 3. 구성 요소 ===================== */
+/* 위쪽 고정 영역: 스크롤해도 이름·연결 상태·메뉴가 보인다 */
+.app-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: var(--space-3) var(--space-3) 0;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow);
+}
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
 }
-.sub { margin: 0; color: var(--color-text-sub); font-size: 13px; }
+main { padding: var(--space-3); }
+
+.tab-nav { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: var(--space-2); }
+.tab-btn {
+  padding: var(--space-2) var(--space-1);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--color-text-sub);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab-btn:hover { color: var(--color-accent); }
+.tab-btn[aria-selected="true"] { color: var(--color-accent); border-bottom-color: var(--color-accent); }
 
 .card {
   background: var(--color-surface);
@@ -90,7 +115,6 @@ pre {
   padding: var(--space-4);
   margin-bottom: var(--space-3);
 }
-.card > summary { cursor: pointer; font-weight: 700; }
 .guide ol, .inner-guide ol { padding-left: 20px; margin: var(--space-2) 0 0; }
 .guide li, .inner-guide li { margin-bottom: var(--space-1); }
 .inner-guide { margin-top: var(--space-3); }
@@ -119,11 +143,7 @@ pre {
 .btn-sub:hover:not(:disabled) { background: var(--color-accent-soft); }
 .btn-small { width: auto; margin-top: var(--space-2); padding: var(--space-1) var(--space-3); font-size: 13px; white-space: nowrap; }
 
-.site-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.site-grid .btn { margin: 0; text-align: left; }
-.site-grid .btn[data-missing="true"] { color: var(--color-text-sub); border-style: dashed; }
-
-.pill-group { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+.pill-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
 .pill {
   padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
@@ -150,6 +170,8 @@ pre {
 .seg label:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-hover); }
 .seg input { width: auto; margin: 0; }
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-2); }
+.time-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--space-1); align-items: center; }
+.time-pair select { padding-left: var(--space-2); padding-right: var(--space-1); }
 .check-row { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
 .check-row label { display: flex; gap: var(--space-2); align-items: center; margin: 0; font-weight: 400; }
 .check-row input { width: auto; margin: 0; }
@@ -186,6 +208,3 @@ pre {
 .slot-row .btn-small { margin: 0; }
 .slot-state { grid-column: 1 / -1; font-size: 12px; color: var(--color-text-sub); }
 .slot-state[data-done="true"] { color: var(--color-ok); }
-.site-row { display: grid; grid-template-columns: 1fr auto; gap: var(--space-1) var(--space-2); align-items: end; }
-.site-row label { grid-column: 1 / -1; margin: 0; font-size: 14px; }
-.site-row .btn-small { margin: 0; }

@@ -4,7 +4,7 @@
 
 | 폴더 | 무엇 | 맡는 일 |
 |---|---|---|
-| `pen-browser/` | 크롬 확장 (MV3, HTML+JS, 빌드 없음) | **크롬 안의 일**: 업무 사이트 탭 전환, K-에듀파인 결재·공람 점검, 연 공문 분석(Ollama/PenGPT), 나이스 복무·출장 신청 창 채우기, PenGPT 위치 지정, 진단 |
+| `pen-browser/` | 크롬 확장 (MV3, HTML+JS, 빌드 없음) | **크롬 안의 일**: 업무포털 메뉴로 나이스·K-에듀파인 창 열기, K-에듀파인 결재·공람 점검, 연 공문 분석(Ollama/PenGPT), 나이스 복무·출장 신청 창 채우기, PenGPT 위치 지정, 도우미 대신 PenGPT 에 묻기, 진단 |
 | `gongmun-helper/` | 공문작성 도우미 (Python + PyQt5 + pywin32) | **크롬 밖의 일**: K-에듀파인 공문 작성 창(WXSClient.exe)에 AI 초안·제목·본문·결재선·과제카드·수신처 넣기 |
 
 나누는 기준: 크롬 확장은 크롬 밖 프로그램(WXSClient)에 손댈 수 없다. 그래서 공문 작성 창을 다루는 기능은 전부 `gongmun-helper` 에 둔다. **pen-browser 에 공문 작성·결재선·과제카드 기능을 다시 넣지 말 것.** 예전 `pen-helper`(PowerShell 네이티브 메시징 호스트)는 `gongmun-helper` 로 대체되어 없어졌고, 확장의 `nativeMessaging` 권한도 뺐다.
@@ -30,8 +30,8 @@ python -m gongmun
 ## 시험
 
 ```powershell
-cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로(16개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능(headless 크롬, 가짜 chrome API)
+cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기(20개)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 42개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -44,6 +44,7 @@ python tests\pen-browser\live_reload.py                                 # 확장
 도우미가 `127.0.0.1:47615` 에서 듣고, 확장이 `fetch` 한다.
 
 - `GET /ping` → `{ok, app, version}`. `POST /gongmun {"request"}` → 도우미 ①칸에 채우고 창을 앞으로. **AI 호출·공문 창 입력은 하지 않는다**(사용자가 확인하고 누른다)
+- **도우미의 PenGPT 초안은 거꾸로 흐른다**: PenGPT 는 API 가 없어 도우미가 질문을 `PenBridge` 에 쌓고(`ask_pengpt`), 패널이 2초마다 `POST /ai/next` 로 가져가 `callPenGpt` 로 묻고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 질문(공문 내용)을 담으므로 두 주소 모두 Origin 필수
 - POST 는 `Origin` 이 `PEN_BROWSER_EXTENSION_IDS` 일 때만 받는다. 웹사이트가 보낸 요청은 Origin 이 달라 거절된다
 - 확장 ID 는 `manifest.json` 의 `key` 로 고정된다 — key 를 바꾸면 `gongmun/config.py` 의 ID 도 바꿀 것
 - 포트는 `gongmun/config.py` 의 `PEN_BRIDGE_PORT` 와 `sidepanel.js` 의 `HELPER_URL` 두 곳에 있다. 같이 바꿀 것
@@ -69,7 +70,7 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 
 실제 업무 시스템이다. **신청·승인요청·상신·저장 버튼은 시험 중에도 누르지 않는다.** 채운 신청 창은 `btnCancel`(닫기)로 닫는다.
 
-**업무포털** `pen.eduptl.kr` — 위 메뉴의 `나이스`·`K-에듀파인` 이 새 탭으로 SSO 연결된다.
+**업무포털** `pen.eduptl.kr` — 위 메뉴의 `나이스`·`K-에듀파인` 이 새 탭으로 SSO 연결된다. 나이스·K-에듀파인 주소를 직접 열면 로그인이 안 되므로 확장은 업무포털 탭에서 그 메뉴 링크(글자가 꼭 맞는 `<a>`)를 눌러 연다(`openFromPortal`). 확장이 대신 누른 클릭은 팝업 차단에 걸릴 수 있어, 5초 안에 창이 안 뜨면 링크의 http 주소를 새 탭으로 연다. **업무포털 주소를 새 탭에서 직접 열면 로그인 화면(`bpm_lgn_lg00_001.do?noEpSession`)으로 간다**(로그인된 탭은 그대로)
 
 **4세대 나이스** `pen.neis.go.kr/jsp/main.jsp` — eXBuilder6(`cpr`, `cl-control`). HTML 입력칸에 id 가 없으므로 DOM 이 아니라 eXBuilder API 로 다룬다(`neis.js` 의 `neisPageRun`, `world: 'MAIN'` 으로 주입).
 - 화면 = 앱 인스턴스: `cpr.core.Platform.INSTANCE.getAllRunningAppInstances()` → `app.app.id`, 컨트롤은 `app.lookup('id')`
@@ -80,6 +81,8 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 - 출장 기간을 데이터셋(`dataSet.setValue`)에 바로 쓰면 날짜는 바뀌어도 신청시간이 다시 계산되지 않는다 → 편집칸 컨트롤로 넣는다
 - 어떤 근무상황을 고르면 안내창(`app/cmn/alert`, 버튼 `btnConfirm`)이 뜬다(예: 반일연가 4시간 차감). 글자를 모아 패널에 보여 주고 닫는다
 - 대분류→소분류→상세 목록은 `neis.js` 의 `LEAVE_TREE` 에 화면에서 읽은 그대로 둔다. 나이스가 바뀌면 여기를 고칠 것
+- 나이스 창: 로그인된 나이스 탭(`cpr` 이 있고 앱 인스턴스가 있음 — `neisPageReady`)이 있으면 쓰고, 없으면 업무포털 메뉴로 연 뒤 최대 40초 기다린다(`getNeisTab`). 방금 연 창은 왼쪽 메뉴를 늦게 그려 `neisPageRun` 이 메뉴 링크를 10초까지 기다린다
+- 패널의 시각은 24시간제 선택칸(시 00~23, 분 5분 단위)이다. `input type=time` 은 한국어 크롬에서 오전/오후로 보여 쓰지 않는다
 
 **K-에듀파인** `klef.pen.go.kr/keris_ui/main.do` — 바깥은 Nexacro, 문서 목록은 그 안 `WebBrowser`(iframe)의 일반 HTML 표 `#tbList`.
 - 결재대기 머리글: 상태·문서종류·문서유형·공개여부·문서번호·제목·기안(발송)부서·기안(담당)자·기안일시·수신/발신. 공람대기: 상태·문서종류·문서번호·제목·발송기관·공람지정자·공람지정부서·기안일시·공람도착일시·처리유형. 비어 있으면 `colspan` 칸 하나
@@ -90,7 +93,7 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 
 ## 개인정보
 
-- 공문 초안 AI 는 내 Ollama 로만 보낸다(도우미). 결재·공람 점검은 Ollama 또는 PenGPT 로만 보낸다(확장). 외부 상용 AI 로 보내지 말 것
+- 공문 초안 AI 는 자체 AI 서버(Ollama) 또는 PenGPT 로만 보낸다(도우미 설정 `ai_provider`). 결재·공람 점검은 Ollama 또는 PenGPT 로만 보낸다(확장). 외부 상용 AI 로 보내지 말 것
 - 도우미 설정은 `gongmun-helper/data/settings.json` (gitignore). 확장 설정은 `chrome.storage.local`
 - 로그·콘솔에 공문 내용을 남기지 않는다(`bridge._Handler.log_message` 를 비워 둔 이유)
 

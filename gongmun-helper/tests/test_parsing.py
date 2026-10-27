@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from gongmun import config
-from gongmun.draft_ai import build_draft_prompt, extract_json, parse_task_cards, suggest_task_card
+from gongmun.draft_ai import build_draft_prompt, extract_json, parse_task_cards, request_draft, suggest_task_card
 from gongmun.panel import parse_approval_lines, parse_recipients
 
 
@@ -59,6 +59,19 @@ class PromptTest(unittest.TestCase):
         self.assertIn("기관·부서: 부산○○고", prompt)
         self.assertIn("과제카드 목록: 일반사무", prompt)
         self.assertIn("요청: 연수 안내", prompt)
+
+    def test_request_draft_with_any_ai(self):
+        """자체 AI 서버든 PenGPT 든 ask(system, user) 하나로 묻고, 답은 같은 방식으로 읽는다."""
+        asked = []
+
+        def fake_ask(system, user):
+            asked.append(user)
+            return '앞말 {"title": "노동인권 연수 안내", "body": "1. 줄\\n2. 줄", "taskCard": "목록에 없는 카드"}'
+
+        draft = request_draft(fake_ask, "노동인권 연수", {}, "특성화고노동인권교육 | 노동인권\n일반사무 | 사무")
+        self.assertEqual(draft["body"], "1. 줄\n2. 줄")
+        self.assertEqual(draft["taskCard"], "특성화고노동인권교육")
+        self.assertIn("요청: 노동인권 연수", asked[0])
 
 
 class SettingsFileTest(unittest.TestCase):

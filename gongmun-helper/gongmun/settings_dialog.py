@@ -1,15 +1,15 @@
 """목록·AI 설정 다이얼로그.
 
-기관·부서, 결재선 목록, 과제카드 목록, Ollama 주소·모델을 한 화면에서 고친다.
+기관·부서, 결재선 목록, 과제카드 목록, AI(자체 AI 서버 또는 PenGPT)를 한 화면에서 고친다.
 값은 data/settings.json 에 저장된다(PC 안에만 남음).
 """
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QLineEdit, QComboBox, QPlainTextEdit, QDialogButtonBox, QMessageBox,
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget,
+    QLineEdit, QComboBox, QPlainTextEdit, QDialogButtonBox, QMessageBox, QRadioButton, QButtonGroup,
 )
 from PyQt5.QtCore import Qt
 
-from gongmun.draft_ai import list_models
+from gongmun.draft_ai import AI_PROVIDERS, list_models
 
 HELP_STYLE = "color: #7f8c8d; font-size: 11px;"
 
@@ -47,13 +47,26 @@ class SettingsDialog(QDialog):
             "과제카드 선택 창에 나오는 단위과제카드 이름(대괄호 뒤 부분)으로 적습니다. "
             "AI 가 초안을 만들 때 이 목록에서 알맞은 카드를 골라 둡니다."))
 
-        layout.addWidget(QLabel("<b>AI (내 Ollama 서버)</b>"))
+        layout.addWidget(QLabel("<b>AI</b> — 공문 초안을 누구에게 맡길까요?"))
+        self.provider_group = QButtonGroup(self)
+        self.provider_radios = {}
+        for key, label in AI_PROVIDERS.items():
+            radio = QRadioButton(label)
+            self.provider_group.addButton(radio)
+            self.provider_radios[key] = radio
+            layout.addWidget(radio)
+        saved_provider = settings.get("ai_provider", "ollama")
+        self.provider_radios.get(saved_provider, self.provider_radios["ollama"]).setChecked(True)
+
+        self.ollama_box = QWidget()
+        ollama_layout = QVBoxLayout(self.ollama_box)
+        ollama_layout.setContentsMargins(0, 0, 0, 0)
         url_row = QHBoxLayout()
         url_row.addWidget(QLabel("주소:"))
         self.url_edit = QLineEdit(settings.get("ollama_url", ""))
         self.url_edit.setPlaceholderText("예) http://100.64.0.1:11434")
         url_row.addWidget(self.url_edit, 1)
-        layout.addLayout(url_row)
+        ollama_layout.addLayout(url_row)
 
         model_row = QHBoxLayout()
         model_row.addWidget(QLabel("모델:"))
@@ -66,10 +79,19 @@ class SettingsDialog(QDialog):
         load_btn = QPushButton("모델 불러오기")
         load_btn.clicked.connect(self.load_models)
         model_row.addWidget(load_btn)
-        layout.addLayout(model_row)
-        layout.addWidget(self._help(
-            "공문 요청은 이 주소의 Ollama 로만 보냅니다(외부 AI 로 보내지 않음). "
+        ollama_layout.addLayout(model_row)
+        ollama_layout.addWidget(self._help(
+            "공문 요청은 이 주소의 자체 AI 서버(Ollama)로만 보냅니다(외부 AI 로 보내지 않음). "
             "추천 모델: exaone3.5:7.8b 또는 gemma3:12b"))
+        layout.addWidget(self.ollama_box)
+
+        self.pengpt_help = self._help(
+            "크롬의 PEN 브라우저 패널이 열려 있는 동안, 패널이 열어 둔 PenGPT 탭에 대신 묻고 답을 가져옵니다. "
+            "PenGPT 에 로그인한 탭을 열어 두고, PEN 브라우저 설정 > AI 연결 > PenGPT 에서 위치 지정을 한 번 해 두세요. "
+            "내용이 교육청 PenGPT 로 전송됩니다.")
+        layout.addWidget(self.pengpt_help)
+        self.provider_group.buttonToggled.connect(self._show_provider)
+        self._show_provider()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Save).setText("저장")
@@ -84,16 +106,24 @@ class SettingsDialog(QDialog):
         label.setStyleSheet(HELP_STYLE)
         return label
 
+    def selected_provider(self):
+        return next(key for key, radio in self.provider_radios.items() if radio.isChecked())
+
+    def _show_provider(self, *args):
+        use_ollama = self.selected_provider() == "ollama"
+        self.ollama_box.setVisible(use_ollama)
+        self.pengpt_help.setVisible(not use_ollama)
+
     def load_models(self):
         url = self.url_edit.text().strip()
         if not url:
-            QMessageBox.warning(self, "안내", "Ollama 주소를 먼저 적어 주세요.")
+            QMessageBox.warning(self, "안내", "자체 AI 서버(Ollama) 주소를 먼저 적어 주세요.")
             return
         try:
             models = list_models(url)
         except Exception:
             QMessageBox.warning(self, "연결 실패",
-                                "Ollama 서버에 연결하지 못했습니다. 맥북이 켜져 있고 주소가 맞는지 확인해 주세요.")
+                                "자체 AI 서버(Ollama)에 연결하지 못했습니다. 서버(맥북)가 켜져 있고 주소가 맞는지 확인해 주세요.")
             return
         current = self.model_combo.currentText()
         self.model_combo.clear()
@@ -107,6 +137,7 @@ class SettingsDialog(QDialog):
             "org_name": self.org_edit.text().strip(),
             "appr_lines": self.appr_edit.toPlainText().strip(),
             "task_cards": self.task_edit.toPlainText().strip(),
+            "ai_provider": self.selected_provider(),
             "ollama_url": self.url_edit.text().strip().rstrip("/"),
             "ollama_model": self.model_combo.currentText().strip(),
         }

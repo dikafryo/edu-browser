@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-VERSION = "26.1028.2"
+VERSION = "26.1028.3"
 APP_NAME = f"공문작성 도우미 v{VERSION}"
 
 # PEN 브라우저(크롬 확장) 연결 — bridge.py.
@@ -22,7 +22,8 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 DEFAULT_SETTINGS = {
     "org_name":     "",   # 기관·부서 (AI 초안에 넣는다)
-    "ollama_url":   "",   # 공문 내용은 외부 AI 가 아닌 내 Ollama 로만 보낸다
+    "ai_provider":  "ollama",  # "ollama"(자체 AI 서버) 또는 "pengpt"(PEN 브라우저가 PenGPT 탭에 대신 물음)
+    "ollama_url":   "",   # 공문 내용은 외부 AI 가 아닌 자체 AI 서버·PenGPT 로만 보낸다
     "ollama_model": "",
     "appr_lines":   "",   # '나의 결재선 이름: 사람, 사람' 한 줄에 하나
     "task_cards":   "",   # '과제카드명 | 관련 낱말' 한 줄에 하나

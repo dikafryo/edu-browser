@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from PyQt5.QtCore import QCoreApplication, QTimer
+from PyQt5.QtCore import QCoreApplication
 
 from gongmun import bridge
 from gongmun.config import PEN_BROWSER_EXTENSION_IDS
@@ -57,11 +57,13 @@ class BridgeTest(unittest.TestCase):
 
         worker = threading.Thread(target=work)
         worker.start()
-        poll = QTimer()
-        poll.timeout.connect(lambda: None if worker.is_alive() else QTimer.singleShot(200, self.app.quit))
-        poll.start(50)
-        self.app.exec_()
-        poll.stop()
+        # 이벤트 루프를 직접 돌린다. app.exec_() + 예약 종료는 남은 종료 예약이 다음 시험의 루프를 일찍 끝냈다
+        while worker.is_alive():
+            self.app.processEvents()
+            worker.join(0.01)
+        for _ in range(20):  # 서버 스레드가 보낸 시그널이 메인 스레드에 닿을 시간
+            self.app.processEvents()
+            threading.Event().wait(0.01)
         return out["value"]
 
     def test_ping(self):
@@ -92,6 +94,49 @@ class BridgeTest(unittest.TestCase):
 
     def test_second_instance_cannot_take_the_port(self):
         self.assertFalse(bridge.PenBridge().start())
+
+    def ask_with_fake_panel(self, panel_reply):
+        """도우미가 PenGPT 에 물으면, 가짜 패널이 /ai/next 로 가져가 /ai/result 로 답한다."""
+        request("/ai/next", {}, EXTENSION_ORIGIN)  # 패널이 열려 있다는 신호
+        seen = {}
+
+        def panel():
+            for _ in range(50):
+                _, body = request("/ai/next", {}, EXTENSION_ORIGIN)
+                if body["job"]:
+                    seen["job"] = body["job"]
+                    request("/ai/result", {"id": body["job"]["id"], **panel_reply}, EXTENSION_ORIGIN)
+                    return
+                threading.Event().wait(0.1)
+
+        worker = threading.Thread(target=panel)
+        worker.start()
+        try:
+            return self.bridge.ask_pengpt("시스템", "질문", timeout=10), seen
+        except RuntimeError as error:
+            return error, seen
+        finally:
+            worker.join()
+
+    def test_pengpt_relay_answer(self):
+        answer, seen = self.ask_with_fake_panel({"answer": '{"title":"제목"}'})
+        self.assertEqual(answer, '{"title":"제목"}')
+        self.assertEqual((seen["job"]["system"], seen["job"]["user"]), ("시스템", "질문"))
+        _, body = request("/ai/next", {}, EXTENSION_ORIGIN)
+        self.assertIsNone(body["job"])  # 한 번 가져간 질문은 다시 내주지 않는다
+
+    def test_pengpt_relay_error(self):
+        error, _ = self.ask_with_fake_panel({"error": "PenGPT 탭을 찾지 못했습니다."})
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn("PenGPT 탭을 찾지 못했습니다", str(error))
+
+    def test_pengpt_needs_open_panel_and_extension_origin(self):
+        status, _ = request("/ai/next", {}, "https://evil.example")
+        self.assertEqual(status, 403)  # 웹사이트는 쌓인 질문(공문 내용)을 가져갈 수 없다
+        with mock.patch.object(bridge.time, "monotonic", return_value=10 ** 9):
+            with self.assertRaises(RuntimeError) as caught:
+                self.bridge.ask_pengpt("시스템", "질문", timeout=1)
+        self.assertIn("패널이 열려 있지 않습니다", str(caught.exception))
 
 
 if __name__ == "__main__":

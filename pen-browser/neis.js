@@ -1,7 +1,8 @@
 /* PEN 브라우저 – 나이스 복무·출장 입력
-   4세대 나이스(eXBuilder6 화면)의 근무상황 신청·출장 신청 창을 열고 입력칸을 채운다.
+   업무포털 메뉴의 [나이스]를 눌러 나이스 창을 직접 열고(이미 열려 있으면 그 창을 쓰고),
+   4세대 나이스(eXBuilder6 화면)의 근무상황 신청·출장 신청 창을 열어 입력칸을 채운다.
    [승인요청]은 누르지 않는다 — 사용자가 나이스 화면에서 확인하고 직접 누른다.
-   (sidepanel.js의 $, showNotice, withBusy, fillSelect 를 함께 쓴다) */
+   (sidepanel.js의 $, showNotice, withBusy, fillSelect, openFromPortal, focusTab, sleep 을 함께 쓴다) */
 
 /* ===================== 1. 설정 ===================== */
 // 나이스 근무상황 대분류 → 소분류 → 상세. 2026. 10. 부산 4세대 나이스 화면에서 읽은 목록이다
@@ -33,6 +34,13 @@ const LEAVE_REASONS = ['휴업일', '1호', '2호', '3호', '4호', '5호', '6�
 const TRIP_KINDS = ['국내출장(관내)', '국내출장(관외)', '국외출장', '출장(연수)'];
 const NEIS_TAB_PATTERN = /neis\.go\.kr/;
 const NEIS_DRAFT_KEY = 'neisDraft';
+// 업무포털에서 연 나이스 창이 로그인을 마치고 첫 화면을 다 그릴 때까지 기다리는 시간
+const NEIS_READY_TIMEOUT_MS = 40000;
+// 시각은 24시간제로 고른다. 나이스도 분을 5분 단위로만 받는다
+const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'));
+const MINUTES = Array.from({ length: 12 }, (_, step) => String(step * 5).padStart(2, '0'));
+const DEFAULT_FROM_TIME = '09:00';
+const DEFAULT_TO_TIME = '18:00';
 
 /* ===================== 2. 데이터 처리 ===================== */
 function toNeisDate(value) {
@@ -153,12 +161,22 @@ async function neisPageRun(job) {
     return notices.filter(Boolean);
   };
 
+  // 방금 연 나이스 창은 메뉴를 늦게 그리므로 잠시 기다리며 찾는다
+  const waitMenuLink = async (menu, ms) => {
+    for (let waited = 0; waited < ms; waited += 300) {
+      const link = Array.from(document.querySelectorAll('a')).find((a) => a.textContent.trim().startsWith(menu));
+      if (link) return link;
+      await sleep(300);
+    }
+    return null;
+  };
+
   const screen = SCREENS[job.kind];
   let form = findApp(screen.form);
   if (!form) {
     let list = findApp(screen.list);
     if (!list) {
-      const link = Array.from(document.querySelectorAll('a')).find((a) => a.textContent.trim().startsWith(screen.menu));
+      const link = await waitMenuLink(screen.menu, 10000);
       if (!link) return { ok: false, problem: `나이스 왼쪽 메뉴에서 '${screen.menu}'을(를) 찾지 못했습니다. 복무 메뉴에서 그 화면을 한 번 연 뒤 다시 눌러 주세요.` };
       link.click();
       list = await waitApp(screen.list, 10000);
@@ -235,9 +253,42 @@ async function findNeisTab() {
   return tabs.find((tab) => NEIS_TAB_PATTERN.test(tab.url || '')) || null;
 }
 
+/* 나이스 화면 안(MAIN world)에서 실행된다. 로그인을 마친 4세대 나이스 화면이면 true */
+function neisPageReady() {
+  return typeof cpr !== 'undefined' && Boolean(cpr.core)
+    && cpr.core.Platform.INSTANCE.getAllRunningAppInstances().length > 0;
+}
+
+async function isNeisReady(tabId) {
+  try {
+    const frames = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: neisPageReady });
+    return Boolean(frames[0] && frames[0].result);
+  } catch (error) {
+    return false;  // 아직 로그인 중간 화면이거나 불러오는 중
+  }
+}
+
+async function waitNeisReady(tabId) {
+  for (let waited = 0; waited < NEIS_READY_TIMEOUT_MS; waited += 1000) {
+    if (await isNeisReady(tabId)) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
+// 로그인된 나이스 창이 있으면 그것을, 없으면(또는 로그인이 풀렸으면) 업무포털 메뉴로 새로 연다
+async function getNeisTab() {
+  const existing = await findNeisTab();
+  if (existing && await isNeisReady(existing.id)) return existing;
+  const opened = await openFromPortal('나이스', NEIS_TAB_PATTERN);
+  if (!(await waitNeisReady(opened.id))) {
+    throw new Error('나이스 창이 다 열리지 않았습니다. 나이스 화면이 뜬 뒤 다시 눌러 주세요.');
+  }
+  return opened;
+}
+
 async function runNeisJob(job) {
-  const tab = await findNeisTab();
-  if (!tab) throw new Error('나이스 탭을 찾지 못했습니다. 업무포털에서 [나이스]를 눌러 연 뒤 다시 눌러 주세요.');
+  const tab = await getNeisTab();
   let frames;
   try {
     frames = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: neisPageRun, args: [job] });
@@ -246,8 +297,7 @@ async function runNeisJob(job) {
   }
   const reply = frames[0] && frames[0].result;
   if (!reply) throw new Error('나이스 화면이 답하지 않았습니다. 나이스 탭을 새로 고친 뒤 다시 눌러 주세요.');
-  await chrome.tabs.update(tab.id, { active: true });
-  await chrome.windows.update(tab.windowId, { focused: true });
+  await focusTab(tab);
   return reply;
 }
 
@@ -255,6 +305,17 @@ async function runNeisJob(job) {
 function optionList(values, placeholder) {
   const options = values.map((value) => ({ value, text: value }));
   return placeholder ? [{ value: '', text: placeholder }, ...options] : options;
+}
+
+// 시각 선택칸 두 개(시·분)를 'HH:MM' 한 값처럼 다룬다
+function readTime(prefix) {
+  return `${$(`${prefix}Hour`).value}:${$(`${prefix}Minute`).value}`;
+}
+
+function renderTime(prefix, value) {
+  const { hour, minute } = splitTime(value);
+  fillSelect($(`${prefix}Hour`), HOURS.map((h) => ({ value: h, text: h })), hour);
+  fillSelect($(`${prefix}Minute`), MINUTES.map((m) => ({ value: m, text: m })), minute);
 }
 
 function renderLeaveMinor() {
@@ -295,15 +356,15 @@ function renderNeisResult(reply) {
 }
 
 /* ===================== 4. 이벤트 연결 ===================== */
-const NEIS_FIELD_IDS = ['neisMajor', 'neisMinor', 'neisDetail', 'neisReasonCode', 'neisFromDate', 'neisFromTime',
-  'neisToDate', 'neisToTime', 'neisReason', 'neisDestination', 'tripKind', 'tripPlace', 'tripPurpose', 'tripMovement'];
+const NEIS_FIELD_IDS = ['neisMajor', 'neisMinor', 'neisDetail', 'neisReasonCode', 'neisFromDate', 'neisToDate',
+  'neisReason', 'neisDestination', 'tripKind', 'tripPlace', 'tripPurpose', 'tripMovement'];
 
 function readNeisInput() {
   const value = (id) => $(id).value.trim();
   return {
     kind: document.querySelector('input[name="neisKind"]:checked').value,
     major: value('neisMajor'), minor: value('neisMinor'), detail: value('neisDetail'), reasonCode: value('neisReasonCode'),
-    fromDate: value('neisFromDate'), fromTime: value('neisFromTime'), toDate: value('neisToDate'), toTime: value('neisToTime'),
+    fromDate: value('neisFromDate'), fromTime: readTime('neisFrom'), toDate: value('neisToDate'), toTime: readTime('neisTo'),
     reason: value('neisReason'), destination: value('neisDestination'),
     tripKind: value('tripKind'), place: value('tripPlace'), purpose: value('tripPurpose'), movement: value('tripMovement'),
     officialCar: $('tripOfficialCar').checked, noTravelPay: $('tripNoPay').checked,
@@ -322,6 +383,8 @@ function checkNeisInput(input) {
 function saveNeisDraft() {
   const draft = { kind: document.querySelector('input[name="neisKind"]:checked').value };
   NEIS_FIELD_IDS.forEach((id) => { draft[id] = $(id).value; });
+  draft.neisFromTime = readTime('neisFrom');
+  draft.neisToTime = readTime('neisTo');
   draft.tripOfficialCar = $('tripOfficialCar').checked;
   draft.tripNoPay = $('tripNoPay').checked;
   chrome.storage.local.set({ [NEIS_DRAFT_KEY]: draft });
@@ -336,7 +399,7 @@ async function handleNeisFill() {
   }
   saveNeisDraft();
   const job = input.kind === 'trip' ? buildTripJob(input) : buildLeaveJob(input);
-  showNotice($('neisMsg'), 'info', '나이스 신청 창을 열고 넣는 중입니다. 나이스 화면을 건드리지 말고 기다려 주세요…');
+  showNotice($('neisMsg'), 'info', '나이스 창과 신청 창을 열고 넣는 중입니다(처음 열 때는 30초쯤 걸립니다). 나이스 화면을 건드리지 말고 기다려 주세요…');
   $('neisLog').replaceChildren();
   await withBusy($('neisFillBtn'), '처리 중…', async () => {
     try {
@@ -357,6 +420,18 @@ async function handleNeisFill() {
   });
 }
 
+async function handleOpenNeis() {
+  await withBusy($('openNeisBtn'), '여는 중…', async () => {
+    try {
+      showNotice($('neisMsg'), 'info', '나이스 창을 여는 중입니다…');
+      await focusTab(await getNeisTab());
+      showNotice($('neisMsg'), 'ok', '나이스 창을 열었습니다.');
+    } catch (error) {
+      showNotice($('neisMsg'), 'error', error.message);
+    }
+  });
+}
+
 // 날짜 입력칸 형식(YYYY-MM-DD)의 한국 날짜. en-CA 형식이 마침 그 모양이다
 function todayInputValue() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -370,9 +445,11 @@ async function restoreNeisDraft() {
   renderLeaveDetail();
   fillSelect($('neisReasonCode'), optionList(LEAVE_REASONS, '(고르지 않음)'), draft.neisReasonCode || '');
   fillSelect($('tripKind'), optionList(TRIP_KINDS), draft.tripKind || TRIP_KINDS[0]);
-  ['neisReason', 'neisDestination', 'tripPlace', 'tripPurpose', 'tripMovement', 'neisFromTime', 'neisToTime'].forEach((id) => {
+  ['neisReason', 'neisDestination', 'tripPlace', 'tripPurpose', 'tripMovement'].forEach((id) => {
     if (draft[id]) $(id).value = draft[id];
   });
+  renderTime('neisFrom', draft.neisFromTime || DEFAULT_FROM_TIME);
+  renderTime('neisTo', draft.neisToTime || DEFAULT_TO_TIME);
   // 날짜는 지난 값을 되살리지 않고 오늘로 시작한다
   $('neisFromDate').value = todayInputValue();
   $('neisToDate').value = todayInputValue();
@@ -389,6 +466,7 @@ function initNeis() {
     radio.addEventListener('change', () => showNeisKind(radio.value));
   });
   $('neisFillBtn').addEventListener('click', handleNeisFill);
+  $('openNeisBtn').addEventListener('click', handleOpenNeis);
 }
 
 initNeis();

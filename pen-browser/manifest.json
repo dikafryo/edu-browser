@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "PEN 브라우저 (업무 도우미)",
-  "version": "26.1028.2",
-  "description": "업무 사이트 바로가기, K-에듀파인 결재·공람 점검, 나이스 복무·출장 입력, 공문작성 도우미와 짝으로 쓰는 확장 프로그램",
+  "version": "26.1028.3",
+  "description": "업무포털에서 나이스·K-에듀파인 열기, K-에듀파인 결재·공람 점검, 나이스 복무·출장 입력, 공문작성 도우미와 짝으로 쓰는 확장 프로그램",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjZfv1b0DNe14tCwbBdVb0ugnVkdPOySs8FdTvdaAgK7+zE/JrEGLgwyKTHM5GpIKI6h54gwcRAEGCv4bp9RVA7d6GuDyGr4BUBOZgM6phBRFIPjwdPBlakAArX0xVDWefceDfsCLRJBxt7svxkX0tmBc8Jy/AsHMguBBZMnbolp20Ojrlhf8dmoP2j9s8cgJruMX+4S+lYSl6v0iNtNXeRSaBsVekIyEbJBoWQkp5BDVi9RVm2DMfQGc3pPJMeHKGxnR8CnkUH07TJLHjN9MT1f0vSaWch0yEKAWFczOyIwYnZebD0pFo2ZYuE0dwWA6C8LnH8Zg0GsPTeuuv7z9PQIDAQAB",
-  "permissions": ["sidePanel", "storage", "tabs", "tabGroups", "scripting", "alarms"],
+  "permissions": ["sidePanel", "storage", "tabs", "scripting", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "side_panel": { "default_path": "sidepanel.html" },

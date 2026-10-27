@@ -1,6 +1,6 @@
 """공문작성 도우미 화면 — K-에듀파인 공문 작성 창에 넣을 내용을 만들고 넣는다.
 
-    ① 어떤 공문인지 적고 [AI로 초안 만들기]  (내 Ollama 로만 보냄)
+    ① 어떤 공문인지 적고 [AI로 초안 만들기]  (자체 AI 서버 또는 PenGPT 로만 보냄)
     ② 제목·본문 확인, 결재선·과제카드·수신처 고르기
     ③ 공문 작성 창에 넣기 (제목·본문 / 결재선 / 과제카드 / 수신처)
 
@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from gongmun import draft_window
-from gongmun.draft_ai import parse_task_cards, request_draft
+from gongmun.draft_ai import ollama_asker, parse_task_cards, request_draft
 from gongmun.settings_dialog import SettingsDialog
 
 # 엑셀에서 기관명 열을 통째로 붙여 넣을 때 따라오는 제목 줄
@@ -125,7 +125,7 @@ class GongmunPanel(QWidget):
 
         layout.addWidget(self._help(
             "K-에듀파인 공문 작성 창을 열어 두고 쓰세요(문서관리 > 기안 > 공용서식에서 서식을 누르면 열립니다). "
-            "AI 초안은 목록 설정의 내 Ollama 로만 보내고, 저장·결재올림은 직접 누릅니다. "
+            "AI 초안은 목록·AI 설정에서 고른 자체 AI 서버 또는 PenGPT 로만 보내고, 저장·결재올림은 직접 누릅니다. "
             "크롬의 PEN 브라우저에서 [공문작성 도우미로 보내기]를 누르면 ①칸이 저절로 채워집니다."))
 
         settings_btn = self._sub_button("⚙ 목록·AI 설정", self.open_settings)
@@ -275,13 +275,26 @@ class GongmunPanel(QWidget):
         if not request:
             self.show_notice("warn", "'어떤 공문인가요?' 칸에 내용을 먼저 적어 주세요.")
             return
-        if not settings.get("ollama_url") or not settings.get("ollama_model"):
-            self.show_notice("warn", "⚙ 목록·AI 설정에서 Ollama 주소와 모델을 먼저 정해 주세요.")
+        ask = self._make_asker()
+        if ask is None:
             return
         self._run("AI가 공문을 쓰는 중입니다(30초~1분).", request_draft,
-                  (settings["ollama_url"], settings["ollama_model"], request,
-                   settings, settings.get("task_cards", "")),
+                  (ask, request, settings, settings.get("task_cards", "")),
                   self._on_draft)
+
+    def _make_asker(self):
+        """설정에서 고른 AI 에 묻는 함수. 준비가 안 됐으면 안내하고 None."""
+        settings = self.host.settings
+        if settings.get("ai_provider") == "pengpt":
+            if not self.host.pen_bridge.panel_alive():
+                self.show_notice("warn", "PenGPT 를 쓰려면 크롬에서 PEN 브라우저 패널을 열어 두세요"
+                                         "(PenGPT 탭도 로그인해 열어 둔 채). 패널이 열려 있으면 몇 초 뒤 다시 눌러 주세요.")
+                return None
+            return self.host.pen_bridge.ask_pengpt
+        if not settings.get("ollama_url") or not settings.get("ollama_model"):
+            self.show_notice("warn", "⚙ 목록·AI 설정에서 자체 AI 서버 주소와 모델을 먼저 정해 주세요.")
+            return None
+        return ollama_asker(settings["ollama_url"], settings["ollama_model"])
 
     def _on_draft(self, draft):
         self.title_edit.setText(draft["title"])

@@ -1,11 +1,13 @@
-"""공문 초안 AI — 내 Ollama 서버로만 보낸다.
+"""공문 초안 AI — 자체 AI 서버(Ollama) 또는 교육청 PenGPT 로만 보낸다.
 
 공문 요청에는 업무 내용이 들어가므로 외부 AI(Claude·ChatGPT·Gemini 등)로는 보내지 않는다.
+PenGPT 는 연결용 주소(API)가 없어서, PEN 브라우저(크롬 확장)가 열어 둔 PenGPT 탭에 대신 묻는다(bridge.py).
 """
 import json
 from datetime import datetime, timedelta, timezone
 
 DRAFT_TIMEOUT_SEC = 300      # 맥북 모델은 30초~수 분 걸릴 수 있다
+AI_PROVIDERS = {"ollama": "자체 AI 서버 (Ollama)", "pengpt": "교육청 PenGPT (PEN 브라우저 통해)"}
 DRAFT_CONTEXT_TOKENS = 16384  # Ollama 기본값(2천~4천 토큰)으로는 긴 요청이 잘린다
 KST = timezone(timedelta(hours=9))
 WEEKDAYS = "월화수목금토일"
@@ -95,34 +97,38 @@ def list_models(base_url):
     return [model["name"] for model in resp.json().get("models", [])]
 
 
-def request_draft(base_url, model, request, settings, task_card_text):
-    """{"title", "body", "taskCard"} 를 돌려준다. 실패하면 한국어 메시지의 RuntimeError."""
+def ollama_asker(base_url, model):
+    """(system, user) → 답 글자. 실패하면 한국어 메시지의 RuntimeError."""
     import requests
-    cards = parse_task_cards(task_card_text)
-    try:
-        resp = requests.post(
-            f"{base_url.rstrip('/')}/api/chat",
-            timeout=DRAFT_TIMEOUT_SEC,
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
-                    {"role": "user", "content": build_draft_prompt(request, settings, cards)},
-                ],
-                "stream": False,
-                "format": "json",
-                "options": {"num_ctx": DRAFT_CONTEXT_TOKENS},
-            },
-        )
-        resp.raise_for_status()
-    except requests.exceptions.ConnectionError:
-        raise RuntimeError("Ollama 서버에 연결하지 못했습니다. 맥북이 켜져 있고 주소가 맞는지 확인해 주세요.")
-    except requests.exceptions.Timeout:
-        raise RuntimeError("AI 응답이 너무 오래 걸려 멈췄습니다. 더 작은 모델을 쓰거나 다시 시도해 주세요.")
-    except requests.exceptions.HTTPError:
-        raise RuntimeError(f"Ollama 가 요청을 거절했습니다({resp.status_code}). 모델 이름을 확인해 주세요.")
 
-    result = extract_json(resp.json().get("message", {}).get("content", ""))
+    def ask(system, user):
+        try:
+            resp = requests.post(
+                f"{base_url.rstrip('/')}/api/chat",
+                timeout=DRAFT_TIMEOUT_SEC,
+                json={
+                    "model": model,
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    "stream": False,
+                    "format": "json",
+                    "options": {"num_ctx": DRAFT_CONTEXT_TOKENS},
+                },
+            )
+            resp.raise_for_status()
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError("자체 AI 서버(Ollama)에 연결하지 못했습니다. 서버(맥북)가 켜져 있고 주소가 맞는지 확인해 주세요.")
+        except requests.exceptions.Timeout:
+            raise RuntimeError("AI 응답이 너무 오래 걸려 멈췄습니다. 더 작은 모델을 쓰거나 다시 시도해 주세요.")
+        except requests.exceptions.HTTPError:
+            raise RuntimeError(f"자체 AI 서버가 요청을 거절했습니다({resp.status_code}). 모델 이름을 확인해 주세요.")
+        return resp.json().get("message", {}).get("content", "")
+
+    return ask
+
+
+def parse_draft(answer, request, cards):
+    """AI 답 글자 → {"title", "body", "taskCard"}. 과제카드는 목록에 있는 이름만 쓴다."""
+    result = extract_json(answer)
     if not result or not (result.get("title") or result.get("body")):
         raise RuntimeError("AI 답을 공문 형식으로 읽지 못했습니다. 한 번 더 눌러 주세요.")
     card_names = {card["name"] for card in cards}
@@ -134,3 +140,10 @@ def request_draft(base_url, model, request, settings, task_card_text):
         "body": str(result.get("body", "")).replace("\\n", "\n").strip(),
         "taskCard": task_card,
     }
+
+
+def request_draft(ask, request, settings, task_card_text):
+    """ask(system, user) 로 AI 에 묻고 {"title", "body", "taskCard"} 를 돌려준다."""
+    cards = parse_task_cards(task_card_text)
+    answer = ask(DRAFT_SYSTEM_PROMPT, build_draft_prompt(request, settings, cards))
+    return parse_draft(answer, request, cards)
