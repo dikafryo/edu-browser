@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>PEN 브라우저</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>PEN 브라우저</h1>
+      <p class="sub">업무 사이트 바로가기 · 결재·공람 점검 · 공문작성 도우미 짝꿍</p>
+    </div>
+    <div class="pill-group">
+      <span id="aiStatus" class="pill" data-kind="idle">AI 확인 중…</span>
+      <span id="helperStatus" class="pill" data-kind="idle">도우미 확인 중…</span>
+    </div>
+  </header>
+
+  <details class="card guide">
+    <summary>사용 방법 (처음이면 펼쳐 보세요)</summary>
+    <ol>
+      <li><b>PEN 브라우저와 공문작성 도우미는 한 쌍입니다.</b> 크롬 안의 일(업무 사이트 이동, 결재·공람 점검)은 PEN 브라우저가, 공문 작성 창(크롬 밖 프로그램)에 넣는 일은 <b>공문작성 도우미</b>가 맡습니다. 같은 PC에서 도우미를 켜 두세요(gongmun-helper 폴더의 <b>실행.bat</b>).</li>
+      <li><b>처음 한 번:</b> 맨 아래 <b>설정</b>에서 내 담당 업무를 적고 AI 연결을 고른 뒤 <b>설정 저장</b>을 누릅니다. 결재선·과제카드 목록과 공문 초안 AI는 공문작성 도우미의 <b>⚙ 목록·AI 설정</b>에서 정합니다.</li>
+      <li><b>업무 사이트</b> 버튼으로 업무포털·나이스·K-에듀파인 등을 오갑니다. 사이트마다 탭이 하나씩만 열립니다.</li>
+      <li><b>결재·공람 점검</b>: K-에듀파인 목록 화면을 띄우고 버튼을 누르면 새 문서·긴급·확인 필요 문서를 골라 줍니다. 공문을 열어 두고 <b>지금 연 공문 분석</b>을 누르면 마감일과 할 일을 알려 주고, <b>회신 공문 도우미에서 쓰기</b>로 바로 넘길 수 있습니다.</li>
+      <li><b>공문 작성</b>: 어떤 공문인지 적고 <b>공문작성 도우미로 보내기</b>를 누르면 도우미 창이 앞으로 나옵니다. 그다음은 도우미에서 ①→②→③ 순서로 진행합니다.</li>
+      <li>자동 입력이 끝나면 K-에듀파인 화면에서 내용을 <b>눈으로 확인한 뒤</b> 직접 저장·상신합니다. 두 프로그램 모두 상신 버튼을 누르지 않습니다.</li>
+    </ol>
+  </details>
+
+  <!-- ===================== 업무 사이트 ===================== -->
+  <section class="card">
+    <h2>업무 사이트</h2>
+    <p class="help">누르면 그 사이트 탭으로 바로 이동합니다. 탭은 'PEN' 묶음에 모입니다.</p>
+    <div id="siteButtons" class="site-grid"></div>
+    <button id="detectSitesBtn" class="btn btn-sub btn-small" type="button">지금 열린 탭에서 사이트 주소 찾기</button>
+    <p id="siteMsg" class="notice" hidden></p>
+  </section>
+
+  <!-- ===================== 결재·공람 점검 ===================== -->
+  <section class="card">
+    <h2>결재·공람 점검</h2>
+    <p class="help">K-에듀파인 화면을 앞에 띄운 뒤 버튼을 누르세요. 화면 글자를 설정에서 고른 AI(<b>맥북 Ollama</b> 또는 <b>PenGPT</b>)가 읽고 정리합니다. 공문 분석은 가장 나중에 연 공문 창을 읽습니다.</p>
+    <div class="action-list">
+      <button id="checkApprovalBtn" class="btn btn-main" type="button">결재할 문서 점검</button>
+      <button id="checkGongramBtn" class="btn btn-sub" type="button">공람 문서 점검</button>
+      <button id="analyzeDocBtn" class="btn btn-sub" type="button">지금 연 공문 분석 (마감일·할 일)</button>
+    </div>
+    <p id="inboxMsg" class="notice" hidden></p>
+    <p id="inboxEmpty" class="help">결재(긴급) 목록 화면에서 <b>결재할 문서 점검</b>, 공람 목록 화면에서 <b>공람 문서 점검</b>, 공문을 열어 둔 화면에서 <b>지금 연 공문 분석</b>을 누르면 결과가 여기에 나옵니다.</p>
+    <p id="inboxSummary" class="count"></p>
+    <ul id="inboxList" class="doc-list"></ul>
+    <details id="inboxMinor" class="inbox-minor" hidden>
+      <summary id="inboxMinorTitle"></summary>
+      <ul id="inboxMinorList" class="doc-list"></ul>
+    </details>
+  </section>
+
+  <!-- ===================== 공문 작성 (공문작성 도우미) ===================== -->
+  <section class="card">
+    <h2>공문 작성 → 공문작성 도우미</h2>
+    <p class="help">K-에듀파인 공문 작성 창은 크롬 밖 프로그램이라, 같은 PC의 <b>공문작성 도우미</b>가 AI 초안과 제목·본문·결재선·과제카드·수신처 입력을 맡습니다. 여기에 적고 보내면 도우미 창이 앞으로 나옵니다.</p>
+    <label for="gongmunRequest">어떤 공문인가요?</label>
+    <textarea id="gongmunRequest" rows="5" placeholder="예) 2학기 교직원 정보보안 연수 안내. 11월 12일(목) 15시, 시청각실, 전 교직원 참석.&#10;관련: 부산광역시교육청 ○○과-12345(2026. 10. 20.)&#10;붙임: 연수 계획서 1부"></textarea>
+    <p class="help">날짜·장소·대상, 관련 근거, 붙임을 함께 적으면 됩니다. 내용은 이 PC 안의 공문작성 도우미로만 가며, 학생·학부모 개인정보는 넣지 마세요.</p>
+    <button id="sendHelperBtn" class="btn btn-main" type="button">공문작성 도우미로 보내기</button>
+    <p id="helperMsg" class="notice" hidden></p>
+  </section>
+
+  <!-- ===================== 설정 ===================== -->
+  <details class="card settings" id="settingsBox">
+    <summary>설정</summary>
+
+    <h3>기본 정보</h3>
+    <label for="myDuties">내 담당 업무</label>
+    <textarea id="myDuties" rows="3" placeholder="예) 정보화 기기 관리, 개인정보 보호, 업무포털 계정 관리"></textarea>
+    <p class="help">공람 문서 중 내가 꼭 확인할 것을 AI가 고를 때 이 기준을 씁니다. 쉼표로 구분해 적으세요.</p>
+
+    <h3>AI 연결</h3>
+    <fieldset class="radio-row">
+      <legend class="sr-only">AI 연결 방식</legend>
+      <label><input type="radio" name="aiProvider" value="ollama"> 내 맥북 Ollama (무료, 내용이 밖으로 나가지 않음)</label>
+      <label><input type="radio" name="aiProvider" value="pengpt"> 교육청 PenGPT (PenGPT 탭을 열어 두고 사용, 내용이 PenGPT로 전송됨)</label>
+    </fieldset>
+
+    <div id="penGptBox" hidden>
+      <p class="help">PenGPT는 연결용 주소(API)가 없어서, 열어 둔 PenGPT 탭에 질문을 대신 넣고 답을 읽어 옵니다. <b>PenGPT에 로그인한 탭을 닫지 마세요.</b> 질문할 때마다 PenGPT 화면에 대화가 하나씩 쌓입니다.</p>
+      <p class="help">처음 한 번: PenGPT 탭을 연 뒤 아래 <b>위치 지정</b>을 누르고, PenGPT 화면에서 그 부분을 한 번 클릭하세요. '대화 내용이 나오는 영역'은 질문과 답이 쌓이는 큰 칸(빈 곳)을 클릭합니다.</p>
+      <div id="penGptSlots" class="slot-table"></div>
+      <p id="penGptMsg" class="notice" hidden></p>
+    </div>
+
+    <div id="ollamaBox">
+      <label for="ollamaUrl">Ollama 주소</label>
+      <input id="ollamaUrl" placeholder="예) http://100.64.0.1:11434">
+      <p class="help">Tailscale 이름(mac.○○.ts.net) 대신 <b>100.으로 시작하는 IP</b>를 쓰세요. 이름으로는 Ollama가 접속을 막습니다.</p>
+      <label for="ollamaModel">사용할 모델</label>
+      <div class="row">
+        <select id="ollamaModel"></select>
+        <button id="loadModelsBtn" class="btn btn-sub btn-small" type="button">모델 목록 불러오기</button>
+      </div>
+      <details class="inner-guide">
+        <summary>맥북 Ollama 준비 방법</summary>
+        <ol>
+          <li>맥북 터미널에서 아래 두 줄을 실행해 확장 프로그램의 접속을 허용합니다.
+            <pre>launchctl setenv OLLAMA_ORIGINS "chrome-extension://*"
+launchctl setenv OLLAMA_HOST "0.0.0.0"</pre>
+          </li>
+          <li>메뉴 막대의 Ollama 아이콘에서 <b>Quit</b> 후 Ollama를 다시 실행합니다. (맥북을 재부팅하면 1번을 다시 해야 합니다.)</li>
+          <li>한국어 공문을 잘 읽고 쓰는 모델을 받습니다. 지금 있는 translategemma는 번역 전용이라 맞지 않습니다.
+            <pre>ollama pull gemma3:12b</pre>
+            맥북 메모리가 16GB 이하이면 대신 <code>exaone3.5:7.8b</code>를 받으세요.
+          </li>
+        </ol>
+      </details>
+    </div>
+
+    <button id="testAiBtn" class="btn btn-sub btn-small" type="button">AI 연결 시험</button>
+    <p id="aiMsg" class="notice" hidden></p>
+
+    <h3>사이트 주소</h3>
+    <p class="help">사이트를 연 탭에서 <b>지금 탭 주소로</b>를 누르면 그 주소가 들어갑니다.</p>
+    <div id="siteSettings" class="slot-table"></div>
+
+    <button id="saveSettingsBtn" class="btn btn-main" type="button">설정 저장</button>
+    <p id="saveMsg" class="notice" hidden></p>
+
+    <h3>문제 진단</h3>
+    <p class="help">새 창(공문 열람 등)을 인식하지 못하거나 공문작성 도우미로 보내지지 않을 때, 그 창을 열어 둔 채 아래 버튼을 누르세요. 창·화면 구조와 도우미 연결 상태만 적으며 공문 내용은 읽지 않습니다.</p>
+    <button id="diagnoseBtn" class="btn btn-sub btn-small" type="button">새 창·도우미 연결 점검</button>
+    <button id="neisStructureBtn" class="btn btn-sub btn-small" type="button">NEIS 화면 구조 점검</button>
+    <p id="diagnoseMsg" class="notice" hidden></p>
+    <label for="diagnoseOut" class="sr-only">점검 결과</label>
+    <textarea id="diagnoseOut" rows="12" readonly hidden></textarea>
+    <button id="copyDiagnoseBtn" class="btn btn-sub btn-small" type="button" hidden>결과 복사</button>
+  </details>
+
+  <script src="sidepanel.js"></script>
+  <script src="inbox.js"></script>
+  <script src="diagnose.js"></script>
+</body>
+</html>

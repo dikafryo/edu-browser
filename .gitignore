@@ -1,0 +1,12 @@
+# 파이썬 가상환경과 캐시
+venv/
+__pycache__/
+*.pyc
+
+# 공문작성 도우미 설정 (결재선·Ollama 주소 등 — PC 마다 다르고 업무 정보가 들어간다)
+gongmun-helper/data/
+
+# 빌드 결과
+build/
+dist/
+*.spec
