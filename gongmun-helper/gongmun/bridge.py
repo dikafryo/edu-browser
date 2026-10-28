@@ -1,13 +1,13 @@
-"""PEN 브라우저(크롬 확장) ↔ 공문작성 도우미 연결 통로.
+"""교육청 업무도우미(크롬 확장) ↔ 공문작성 도우미 연결 통로.
 
 K-에듀파인 공문 작성 창은 크롬 밖 프로그램이라 크롬 확장이 손댈 수 없다.
-그래서 PEN 브라우저는 공문 작성 요청을 같은 PC 의 공문작성 도우미로 넘기고, 입력은 도우미가 맡는다.
+그래서 교육청 업무도우미는 공문 작성 요청을 같은 PC 의 공문작성 도우미로 넘기고, 입력은 도우미가 맡는다.
 거꾸로 도우미가 PenGPT 로 초안을 만들 때는 PenGPT 에 API 가 없으므로, 질문을 여기에 쌓아 두면
-PEN 브라우저 패널이 2초마다 가져가 열어 둔 PenGPT 탭에 대신 묻고 답을 돌려준다.
+교육청 업무도우미 패널이 2초마다 가져가 열어 둔 PenGPT 탭에 대신 묻고 답을 돌려준다.
 같은 통로로 'K-에듀파인 탭에서 나의 결재선·과제카드 이름 읽기'도 맡긴다(작업 kind 로 구분).
 
 - 127.0.0.1 에서만 듣는다. 다른 PC 에서는 접속할 수 없다.
-- Origin 헤더가 PEN 브라우저 확장인 요청만 받는다. 웹사이트가 몰래 보낸 요청은 Origin 이
+- Origin 헤더가 교육청 업무도우미 확장인 요청만 받는다. 웹사이트가 몰래 보낸 요청은 Origin 이
   그 사이트 주소라 거절된다. (/ping 은 Origin 이 비어 있어도 답한다 — 버전만 알려 준다)
 - 받은 공문 요청은 '어떤 공문인가요?' 칸에 채우기만 한다. AI 호출·공문 창 입력은 사용자가 누른다.
 
@@ -31,16 +31,16 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from gongmun.config import VERSION, PEN_BRIDGE_PORT, PEN_BROWSER_EXTENSION_IDS
 
 MAX_BODY_BYTES = 64 * 1024  # 공문 요청 글·AI 답은 이보다 훨씬 짧다
-# 너무 긴 요청도 이만큼까지는 읽어 버린 뒤 답한다. 읽지 않고 답하면 연결이 끊겨 확장이 '도우미 꺼짐'으로 잘못 안내한다
+# 너무 긴 요청도 이만큼까지는 읽어 버린 뒤 답한다. 읽지 않고 답하면 연결이 끊겨 확장이 '공문헬퍼 꺼짐'으로 잘못 안내한다
 DRAIN_LIMIT_BYTES = 1024 * 1024
 TOO_LONG = object()
 ALLOWED_ORIGINS = {f"chrome-extension://{ext_id}" for ext_id in PEN_BROWSER_EXTENSION_IDS}
 
-# 패널이 2초마다 가져가므로, 이만큼 소식이 없으면 PEN 브라우저 패널이 닫혀 있다고 본다
+# 패널이 2초마다 가져가므로, 이만큼 소식이 없으면 교육청 업무도우미 패널이 닫혀 있다고 본다
 PANEL_ALIVE_SEC = 8
 # 확장의 PenGPT 대기(3분)보다 조금 길게 기다린다
 PENGPT_TIMEOUT_SEC = 200
-PANEL_CLOSED = ("PEN 브라우저 패널이 열려 있지 않습니다. 크롬에서 PEN 브라우저 아이콘을 눌러 패널을 열어 두고 "
+PANEL_CLOSED = ("교육청 업무도우미 패널이 열려 있지 않습니다. 크롬에서 교육청 업무도우미 아이콘을 눌러 패널을 열어 두고 "
                 "(PenGPT 탭도 로그인해 열어 둔 채) 다시 눌러 주세요.")
 # 결재선·과제카드 읽기는 K-에듀파인을 열고(최대 40초) 두 화면이 목록을 받을 때까지(각 15초) 기다린다
 LISTS_TIMEOUT_SEC = 120
@@ -71,7 +71,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(404, {"ok": False, "error": "없는 주소입니다."})
             return
         if not self._origin_ok(required=False):
-            self._reply(403, {"ok": False, "error": "PEN 브라우저에서만 쓸 수 있습니다."})
+            self._reply(403, {"ok": False, "error": "교육청 업무도우미에서만 쓸 수 있습니다."})
             return
         self._reply(200, {"ok": True, "app": "공문작성 도우미", "version": VERSION})
 
@@ -82,7 +82,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._reply(404, {"ok": False, "error": "없는 주소입니다."})
             return
         if not self._origin_ok(required=True):
-            self._reply(403, {"ok": False, "error": "PEN 브라우저에서만 쓸 수 있습니다."})
+            self._reply(403, {"ok": False, "error": "교육청 업무도우미에서만 쓸 수 있습니다."})
             return
         payload = self._read_json()
         if payload is TOO_LONG:
@@ -205,7 +205,7 @@ class PenBridge(QObject):
     def _ask_panel(self, fields, timeout, timeout_message, error_prefix=""):
         """작업 스레드에서 부른다. 패널이 돌려준 답 글자. 실패하면 한국어 메시지의 RuntimeError."""
         if self._server is None:
-            raise RuntimeError("PEN 브라우저와 연결 통로가 열려 있지 않습니다. 공문작성 도우미를 하나만 켜 두세요.")
+            raise RuntimeError("교육청 업무도우미와 연결 통로가 열려 있지 않습니다. 공문작성 도우미를 하나만 켜 두세요.")
         if not self.panel_alive():
             raise RuntimeError(PANEL_CLOSED)
         with self._lock:
@@ -234,10 +234,10 @@ class PenBridge(QObject):
     def ask_edufine_lists(self, timeout=LISTS_TIMEOUT_SEC):
         """크롬 K-에듀파인 탭에서 읽은 {"lines": [결재선 이름], "cards": [과제카드 이름]}."""
         answer = self._ask_panel({"kind": "edufine_lists"}, timeout,
-                                 "PEN 브라우저가 K-에듀파인 목록을 읽어 오지 못했습니다. 크롬의 K-에듀파인 탭을 확인해 주세요.")
+                                 "교육청 업무도우미가 K-에듀파인 목록을 읽어 오지 못했습니다. 크롬의 K-에듀파인 탭을 확인해 주세요.")
         try:
             data = json.loads(answer)
         except ValueError:
-            raise RuntimeError("PEN 브라우저가 보낸 목록을 읽지 못했습니다. PEN 브라우저를 새 판으로 고친 뒤 다시 눌러 주세요.") from None
+            raise RuntimeError("교육청 업무도우미가 보낸 목록을 읽지 못했습니다. 교육청 업무도우미를 새 판으로 고친 뒤 다시 눌러 주세요.") from None
         clean = lambda values: [str(v).strip() for v in values or [] if str(v).strip()]
         return {"lines": clean(data.get("lines")), "cards": clean(data.get("cards"))}

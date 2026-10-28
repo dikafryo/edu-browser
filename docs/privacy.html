@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>교육청 업무도우미 개인정보처리방침</title>
+  <style>
+    :root {
+      --color-bg: #ffffff;
+      --color-text: #1f2937;
+      --color-sub: #4b5563;
+      --color-accent: #1d4ed8;
+      --color-line: #e5e7eb;
+      --space: 16px;
+    }
+    body {
+      margin: 0; background: var(--color-bg); color: var(--color-text);
+      font-family: Pretendard, 'Malgun Gothic', sans-serif; font-size: 16px; line-height: 1.6;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: calc(var(--space) * 2) var(--space); }
+    h1 { font-size: 24px; color: var(--color-accent); margin: 0 0 var(--space); }
+    h2 { font-size: 18px; margin: calc(var(--space) * 1.5) 0 calc(var(--space) / 2); padding-top: var(--space); border-top: 1px solid var(--color-line); }
+    .meta { color: var(--color-sub); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>교육청 업무도우미 개인정보처리방침</h1>
+  <p class="meta">시행일: 2026. 10. 28.</p>
+  <p>교육청 업무도우미(이하 '이 확장 프로그램')는 교직원이 업무포털·나이스·K-에듀파인에서 하는 일을 돕는 크롬 확장 프로그램입니다. 교육청이나 해당 시스템 운영 기관이 만든 공식 프로그램이 아닙니다.</p>
+
+  <h2>1. 모으는 정보</h2>
+  <p>이 확장 프로그램은 개발자에게 어떤 정보도 보내지 않습니다. 개발자가 운영하는 서버가 없고, 사용 통계·광고·추적 기능도 없습니다.</p>
+
+  <h2>2. 이 PC 안에만 저장하는 정보</h2>
+  <p>사용자가 설정 화면에 적은 값(담당 업무, AI 서버 주소, 나이스 결재선 이름, 비상연락처 등)과 자주 쓰는 복무·출장 입력값은 크롬의 확장 프로그램 저장소(chrome.storage)에 저장되어 사용자의 PC 안에만 남습니다. 확장 프로그램을 지우면 함께 지워집니다.</p>
+
+  <h2>3. 화면에서 읽는 정보</h2>
+  <p>사용자가 버튼을 누를 때에만 열려 있는 업무포털·나이스·K-에듀파인 화면에서 필요한 내용(신청 창의 칸, 결재·공람 목록, 공문 본문, 결재선·과제카드 이름)을 읽거나 채웁니다. 읽은 내용은 패널에 보여 주는 데에만 쓰고 따로 보관하지 않습니다.</p>
+
+  <h2>4. 다른 곳으로 보내는 정보</h2>
+  <ul>
+    <li><b>사용자가 정한 AI</b>: 공문 분석·초안 기능을 쓸 때, 사용자가 설정에서 고른 AI(사용자가 직접 운영하는 AI 서버 주소, 또는 사용자가 로그인해 둔 PenGPT 탭)에만 해당 공문 내용을 보냅니다. 그 밖의 AI 서비스로는 보내지 않습니다.</li>
+    <li><b>같은 PC의 공문헬퍼</b>: 공문헬퍼(공문작성 도우미)를 함께 쓰면 같은 PC 안(127.0.0.1)에서만 내용을 주고받습니다. 인터넷으로 나가지 않습니다.</li>
+  </ul>
+
+  <h2>5. 권한을 쓰는 이유</h2>
+  <ul>
+    <li><b>모든 사이트 접근, scripting</b>: 시도교육청마다 주소가 다른 업무포털·나이스·K-에듀파인 화면과 사용자가 정한 AI 서버에 접근하기 위해 씁니다. 사용자가 패널의 버튼을 누를 때에만 동작합니다.</li>
+    <li><b>tabs</b>: 업무포털에서 나이스·K-에듀파인 창을 열고 찾기 위해 씁니다.</li>
+    <li><b>storage</b>: 위 2항의 설정을 PC 안에 저장하기 위해 씁니다.</li>
+    <li><b>sidePanel, alarms</b>: 옆 패널을 열고, 새 판으로 바뀌었는지 1분마다 확인하기 위해 씁니다.</li>
+  </ul>
+
+  <h2>6. 바뀌는 경우</h2>
+  <p>이 방침이 바뀌면 이 페이지에 시행일과 함께 알립니다.</p>
+</main>
+</body>
+</html>

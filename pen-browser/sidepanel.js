@@ -1,4 +1,4 @@
-/* PEN 브라우저 – 사이드 패널
+/* 교육청 업무도우미 – 사이드 패널
    위쪽 메뉴(사용 방법·나이스·K-에듀파인·설정) 전환, 업무포털 메뉴로 나이스·K-에듀파인 창 열기,
    결재·공람 점검용 AI 연결, 공문작성 도우미로 공문 작성 요청 넘기기(도우미가 PenGPT를 고르면 대신 묻기)를 맡는다.
    공문 작성 창(크롬 밖 프로그램)에 넣는 일은 짝 프로그램인 공문작성 도우미(gongmun-helper)가 한다. */
@@ -415,7 +415,7 @@ async function relayHelperAiJob() {
   // 예전 도우미는 kind 없이 PenGPT 질문만 보낸다
   const task = HELPER_JOBS[job.kind || 'pengpt'];
   if (!task) {
-    await postToHelper('/ai/result', { id: job.id, error: 'PEN 브라우저가 모르는 요청입니다. PEN 브라우저를 새 판으로 고쳐 주세요.' }).catch(() => {});
+    await postToHelper('/ai/result', { id: job.id, error: '교육청 업무도우미가 모르는 요청입니다. 교육청 업무도우미를 새 판으로 고쳐 주세요.' }).catch(() => {});
     return;
   }
   helperAiBusy = true;
@@ -586,10 +586,10 @@ async function handleSendToHelper(requestText) {
   await withBusy($('sendHelperBtn'), '보내는 중…', async () => {
     try {
       await sendToHelper(text);
-      setPill('helperStatus', 'ok', '도우미 연결됨');
+      setPill('helperStatus', 'ok', '공문헬퍼 연결됨');
       showNotice($('helperMsg'), 'ok', '공문작성 도우미로 보냈습니다. 도우미 창에서 내용을 확인하고 [AI로 초안 만들기]를 눌러 주세요.');
     } catch (error) {
-      setPill('helperStatus', 'error', '도우미 꺼짐');
+      setPill('helperStatus', 'error', '공문헬퍼 꺼짐');
       showNotice($('helperMsg'), 'error', error.message);
     }
   });
@@ -599,10 +599,10 @@ async function checkHelperConnection() {
   try {
     const data = await callHelper('/ping');
     helperOnline = true;
-    setPill('helperStatus', 'ok', `도우미 v${data.version}`);
+    setPill('helperStatus', 'ok', `공문헬퍼 v${data.version}`);
   } catch (error) {
     helperOnline = false;
-    setPill('helperStatus', 'error', '도우미 꺼짐');
+    setPill('helperStatus', 'error', '공문헬퍼 꺼짐');
   }
 }
 

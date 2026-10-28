@@ -281,7 +281,7 @@
 
   // 15. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
-  check('helper pill shows offline', $('helperStatus').textContent === '도우미 꺼짐', $('helperStatus').textContent);
+  check('helper pill shows offline', $('helperStatus').textContent === '공문헬퍼 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);
   $('testOut').textContent = out.join('\n') + '\nSUMMARY ' + out.filter((l) => l.startsWith('PASS')).length + '/' + out.length;
 })().catch((e) => { $('testOut').textContent = 'CRASH ' + e.message + '\n' + e.stack; });

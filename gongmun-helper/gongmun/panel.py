@@ -115,7 +115,7 @@ class GongmunPanel(QWidget):
         layout.addWidget(self._help(
             "K-에듀파인 공문 작성 창을 열어 두고 쓰세요(문서관리 > 기안 > 공용서식에서 서식을 누르면 열립니다). "
             "AI 초안은 목록·AI 설정에서 고른 자체 AI 서버 또는 PenGPT 로만 보내고, 저장·결재올림은 직접 누릅니다. "
-            "크롬의 PEN 브라우저에서 [공문작성 도우미로 보내기]를 누르면 ①칸이 저절로 채워집니다."))
+            "크롬의 교육청 업무도우미에서 [공문작성 도우미로 보내기]를 누르면 ①칸이 저절로 채워집니다."))
 
         settings_btn = self._sub_button("⚙ 목록·AI 설정", self.open_settings)
         layout.addWidget(settings_btn)
@@ -282,10 +282,10 @@ class GongmunPanel(QWidget):
             self.show_notice("ok", text)
 
     def receive_request(self, request_text):
-        """PEN 브라우저가 보낸 내용을 ①칸에 채운다. AI 호출은 사용자가 확인한 뒤 누른다."""
+        """교육청 업무도우미가 보낸 내용을 ①칸에 채운다. AI 호출은 사용자가 확인한 뒤 누른다."""
         self.request_edit.setPlainText(request_text)
         self.request_edit.setFocus()
-        self.show_notice("info", "PEN 브라우저에서 내용을 받았습니다. ①칸을 확인한 뒤 [AI로 초안 만들기]를 눌러 주세요.")
+        self.show_notice("info", "교육청 업무도우미에서 내용을 받았습니다. ①칸을 확인한 뒤 [AI로 초안 만들기]를 눌러 주세요.")
 
     def make_draft(self):
         request = self.request_edit.toPlainText().strip()
@@ -305,7 +305,7 @@ class GongmunPanel(QWidget):
         settings = self.host.settings
         if settings.get("ai_provider") == "pengpt":
             if not self.host.pen_bridge.panel_alive():
-                self.show_notice("warn", "PenGPT 를 쓰려면 크롬에서 PEN 브라우저 패널을 열어 두세요"
+                self.show_notice("warn", "PenGPT 를 쓰려면 크롬에서 교육청 업무도우미 패널을 열어 두세요"
                                          "(PenGPT 탭도 로그인해 열어 둔 채). 패널이 열려 있으면 몇 초 뒤 다시 눌러 주세요.")
                 return None
             return self.host.pen_bridge.ask_pengpt

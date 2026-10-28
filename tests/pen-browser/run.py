@@ -1,4 +1,4 @@
-"""PEN 브라우저 패널 기능 시험.
+"""교육청 업무도우미 패널 기능 시험.
 
 실제 sidepanel.html 의 본문과 스크립트를 가짜 chrome API(stub_chrome.js)와 함께 headless 크롬으로 열고,
 run_tests.js 의 결과를 읽어 보여 준다. 실패가 있으면 종료 코드 1.

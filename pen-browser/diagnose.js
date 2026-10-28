@@ -1,4 +1,4 @@
-/* PEN 브라우저 – 문제 진단
+/* 교육청 업무도우미 – 문제 진단
    열린 창·탭·프레임 구조와 스크립트 주입 가능 여부를 글로 정리해 보여 준다.
    결과는 화면에만 표시하며, 주소의 ? 뒤(로그인 정보가 붙을 수 있음)는 빼고 적는다. */
 
@@ -67,7 +67,7 @@ async function buildDiagnosis() {
   const windows = await chrome.windows.getAll({ populate: true, windowTypes: DIAG_WINDOW_TYPES });
   const targetIds = new Set((await findTargetTabs()).map((tab) => tab.id));
   const lines = [
-    `PEN 브라우저 ${chrome.runtime.getManifest().version} 진단 (${new Date().toLocaleString('ko-KR')})`,
+    `교육청 업무도우미 ${chrome.runtime.getManifest().version} 진단 (${new Date().toLocaleString('ko-KR')})`,
     `확장 번호: ${chrome.runtime.id}`,
     `공문작성 도우미: ${await probeHelper()}`,
   ];

@@ -1,13 +1,13 @@
 """공문 초안 AI — 자체 AI 서버(Ollama) 또는 교육청 PenGPT 로만 보낸다.
 
 공문 요청에는 업무 내용이 들어가므로 외부 AI(Claude·ChatGPT·Gemini 등)로는 보내지 않는다.
-PenGPT 는 연결용 주소(API)가 없어서, PEN 브라우저(크롬 확장)가 열어 둔 PenGPT 탭에 대신 묻는다(bridge.py).
+PenGPT 는 연결용 주소(API)가 없어서, 교육청 업무도우미(크롬 확장)가 열어 둔 PenGPT 탭에 대신 묻는다(bridge.py).
 """
 import json
 from datetime import datetime, timedelta, timezone
 
 DRAFT_TIMEOUT_SEC = 300      # 맥북 모델은 30초~수 분 걸릴 수 있다
-AI_PROVIDERS = {"ollama": "자체 AI 서버 (Ollama)", "pengpt": "교육청 PenGPT (PEN 브라우저 통해)"}
+AI_PROVIDERS = {"ollama": "자체 AI 서버 (Ollama)", "pengpt": "교육청 PenGPT (교육청 업무도우미 통해)"}
 DRAFT_CONTEXT_TOKENS = 16384  # Ollama 기본값(2천~4천 토큰)으로는 긴 요청이 잘린다
 KST = timezone(timedelta(hours=9))
 WEEKDAYS = "월화수목금토일"

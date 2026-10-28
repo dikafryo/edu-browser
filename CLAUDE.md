@@ -45,7 +45,7 @@ python tests\pen-browser\live_reload.py                                 # 확장
 
 - `GET /ping` → `{ok, app, version}`. `POST /gongmun {"request"}` → 도우미 ①칸에 채우고 창을 앞으로. **AI 호출·공문 창 입력은 하지 않는다**(사용자가 확인하고 누른다)
 - **도우미의 PenGPT 초안은 거꾸로 흐른다**: PenGPT 는 API 가 없어 도우미가 질문을 `PenBridge` 에 쌓고(`ask_pengpt`), 패널이 2초마다 `POST /ai/next` 로 가져가 `callPenGpt` 로 묻고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 질문(공문 내용)을 담으므로 두 주소 모두 Origin 필수. 작업에는 `kind` 가 붙는다(`pengpt` / `edufine_lists`, 패널은 `HELPER_JOBS` 로 나눈다)
-- **나의 결재선·과제카드 가져오기** (`gongmun/edufine_lists.py`): 도우미 ②의 [가져오기] → ① 패널이 열려 있으면 `edufine_lists` 작업으로 PEN 브라우저가 K-에듀파인 탭(없으면 업무포털로 엶)에서 **개인설정 > 나의결재선관리**(일반 웹 화면 `retrieveMyReportCours.do`, 목록 `select#IDC_LIST_SANCLINE`)와 **과제관리 > 나의과제**(Nexacro 화면 `AAAREGSMYMN001M01` 의 `dsList.tkcrdNm`)를 열어 이름만 읽는다(`inbox.js` 의 `readEdufineLists`) → ② 못 얻은 목록만 열린 공문 작성 창에서 읽는다(`read_appr_lines`: `streReportCours` 콤보, `read_task_cards`: 과제카드 선택 창의 `dsAList` 를 읽고 [닫기]). 가져온 이름으로 목록 설정을 바꾸되 '결재할 사람'·'관련 낱말' 메모는 이름이 같으면 남긴다. 2026. 10. 28. 실제 화면에서 결재선 3개·과제카드 21개 확인
+- **나의 결재선·과제카드 가져오기** (`gongmun/edufine_lists.py`): 도우미 ②의 [가져오기] → ① 패널이 열려 있으면 `edufine_lists` 작업으로 교육청 업무도우미가 K-에듀파인 탭(없으면 업무포털로 엶)에서 **개인설정 > 나의결재선관리**(일반 웹 화면 `retrieveMyReportCours.do`, 목록 `select#IDC_LIST_SANCLINE`)와 **과제관리 > 나의과제**(Nexacro 화면 `AAAREGSMYMN001M01` 의 `dsList.tkcrdNm`)를 열어 이름만 읽는다(`inbox.js` 의 `readEdufineLists`) → ② 못 얻은 목록만 열린 공문 작성 창에서 읽는다(`read_appr_lines`: `streReportCours` 콤보, `read_task_cards`: 과제카드 선택 창의 `dsAList` 를 읽고 [닫기]). 가져온 이름으로 목록 설정을 바꾸되 '결재할 사람'·'관련 낱말' 메모는 이름이 같으면 남긴다. 2026. 10. 28. 실제 화면에서 결재선 3개·과제카드 21개 확인
 - **K-에듀파인 화면 열기**: 전체 메뉴 자료 `app.gdsMenu`(menuId·menuNm·progrmCoursAdres)에서 메뉴 이름으로 번호를 찾아 `app.gv_leftFrame.form.gfnOpenMenu(menuId)` — 왼쪽 메뉴를 누를 때와 같은 함수다(`openEdufineMenuInPage`). Nexacro 자료 위치는 설정 > **K-에듀파인 화면 구조 점검**(자료 이름·열 이름, 메뉴 자료는 행까지)으로 찾는다. 결과 글상자를 UI Automation 으로 읽으면 약 1만 자에서 잘린다
 - POST 는 `Origin` 이 `PEN_BROWSER_EXTENSION_IDS` 일 때만 받는다. 웹사이트가 보낸 요청은 Origin 이 달라 거절된다
 - 확장 ID 는 `manifest.json` 의 `key` 로 고정된다 — key 를 바꾸면 `gongmun/config.py` 의 ID 도 바꿀 것
@@ -61,6 +61,9 @@ python tests\pen-browser\live_reload.py                                 # 확장
 - 두 곳을 **항상 같은 값으로** 올린다: `pen-browser/manifest.json` 의 `version`, `gongmun-helper/gongmun/config.py` 의 `VERSION`
 - 크롬 manifest 버전은 점으로 나눈 정수(각 0~65535)이고 **앞자리 0 을 허용하지 않는다.** 그래서 1~9월은 월 앞의 0 을 뺀다: 1월 5일 = `26.105.1` (`26.0105.1` 은 크롬이 거부). 숫자로 비교해도 날짜 순서가 유지된다(131 < 201 < 930 < 1001)
 - 저장소: https://github.com/dikafryo/edu-browser (공개). 개인 IP·주소·이름·명단을 코드나 예시에 넣지 말 것
+- 확장 이름은 **교육청 업무도우미**(예전 'PEN 브라우저', 폴더 이름 `pen-browser` 는 그대로), 공문작성 도우미의 화면 표시 이름은 **공문헬퍼**
+- 배포 파일: `python tools/make_dist.py` → `dist/교육청업무도우미-웹스토어-v{버전}.zip`(manifest 의 `key` 를 뺌 — 웹스토어가 받지 않음)과 `dist/gongmun-helper.zip`(neis.me/data 에 올림, venv·data·tests 제외). 웹스토어 등록 글·권한 이유는 `docs/웹스토어-등록.md`, 개인정보처리방침은 `docs/privacy.html`
+- 웹스토어 판은 확장 ID 가 다르다 → 게시 후 그 ID 를 `config.py` 의 `PEN_BROWSER_EXTENSION_IDS` 에 더해야 공문헬퍼가 요청을 받는다
 
 ## 공문 작성 창 조작 (`gongmun/draft_window.py`)
 

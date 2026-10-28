@@ -3,12 +3,13 @@ import json
 import os
 import sys
 
-VERSION = "26.1028.8"
+VERSION = "26.1028.9"
 APP_NAME = f"공문작성 도우미 v{VERSION}"
 
-# PEN 브라우저(크롬 확장) 연결 — bridge.py.
+# 교육청 업무도우미(크롬 확장) 연결 — bridge.py.
 # 포트를 바꾸면 pen-browser/sidepanel.js 의 HELPER_URL 도 같이 바꿀 것.
 # 확장 ID 는 pen-browser/manifest.json 의 "key" 로 고정된다(key 를 바꾸면 ID 도 바뀐다).
+# 크롬 웹스토어 판은 웹스토어가 정한 다른 ID 를 받는다 — 게시하면 그 ID 를 여기에 더할 것.
 PEN_BRIDGE_PORT = 47615
 PEN_BROWSER_EXTENSION_IDS = ("opcbaabkeajnfochgbhhoklciiojapkp",)
 
@@ -22,7 +23,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 DEFAULT_SETTINGS = {
     "org_name":     "",   # 기관·부서 (AI 초안에 넣는다)
-    "ai_provider":  "ollama",  # "ollama"(자체 AI 서버) 또는 "pengpt"(PEN 브라우저가 PenGPT 탭에 대신 물음)
+    "ai_provider":  "ollama",  # "ollama"(자체 AI 서버) 또는 "pengpt"(교육청 업무도우미가 PenGPT 탭에 대신 물음)
     "ollama_url":   "",   # 공문 내용은 외부 AI 가 아닌 자체 AI 서버·PenGPT 로만 보낸다
     "ollama_model": "",
     "appr_lines":   "",   # '나의 결재선 이름: 사람, 사람' 한 줄에 하나

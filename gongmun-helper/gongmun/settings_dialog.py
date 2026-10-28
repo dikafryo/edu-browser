@@ -88,8 +88,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.ollama_box)
 
         self.pengpt_help = self._help(
-            "크롬의 PEN 브라우저 패널이 열려 있는 동안, 패널이 열어 둔 PenGPT 탭에 대신 묻고 답을 가져옵니다. "
-            "PenGPT 에 로그인한 탭을 열어 두고, PEN 브라우저 설정 > AI 연결 > PenGPT 에서 위치 지정을 한 번 해 두세요. "
+            "크롬의 교육청 업무도우미 패널이 열려 있는 동안, 패널이 열어 둔 PenGPT 탭에 대신 묻고 답을 가져옵니다. "
+            "PenGPT 에 로그인한 탭을 열어 두고, 교육청 업무도우미 설정 > AI 연결 > PenGPT 에서 위치 지정을 한 번 해 두세요. "
             "내용이 교육청 PenGPT 로 전송됩니다.")
         layout.addWidget(self.pengpt_help)
         self.provider_group.buttonToggled.connect(self._show_provider)

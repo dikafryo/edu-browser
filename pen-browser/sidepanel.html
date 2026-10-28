@@ -2,17 +2,17 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>PEN 브라우저</title>
+  <title>교육청 업무도우미</title>
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
   <!-- 위쪽은 스크롤해도 고정: 이름·연결 상태·메뉴 4개 -->
   <header class="app-top">
     <div class="app-header">
-      <h1>PEN 브라우저</h1>
+      <h1>교육청 업무도우미</h1>
       <div class="pill-group">
         <span id="aiStatus" class="pill" data-kind="idle">AI 확인 중…</span>
-        <span id="helperStatus" class="pill" data-kind="idle">도우미 확인 중…</span>
+        <span id="helperStatus" class="pill" data-kind="idle">공문헬퍼 확인 중…</span>
       </div>
     </div>
     <nav class="tab-nav" role="tablist" aria-label="메뉴">
@@ -29,14 +29,26 @@
       <div class="card guide">
         <h2>사용 방법</h2>
         <ol>
-          <li><b>업무포털에 로그인해 둡니다.</b> 나이스·K-에듀파인 창은 PEN 브라우저가 업무포털 메뉴를 눌러 직접 엽니다.</li>
+          <li><b>업무포털에 로그인해 둡니다.</b> 나이스·K-에듀파인 창은 교육청 업무도우미가 업무포털 메뉴를 눌러 직접 엽니다.</li>
           <li><b>처음 한 번:</b> <b>설정</b>에서 내 담당 업무를 적고 AI(자체 AI 서버 또는 PenGPT)를 고른 뒤 <b>설정 저장</b>을 누릅니다.</li>
           <li><b>나이스</b>: 근무상황(연가·병가·외출 등)이나 출장 내용을 적고 <b>나이스 신청 창에 넣기</b>를 누르면, 나이스 창을 열고 신청 창의 칸을 채웁니다. 확인 후 <b>승인요청</b>을 누르면 상신 화면까지 진행해 개인결재선을 골라 둡니다(처음 한 번 <b>설정</b>에서 연가·조퇴·외출·출장·종일출장·연수별 결재선을 골라 두세요). <b>[상신]은 직접</b> 누르세요.</li>
           <li><b>K-에듀파인</b>: 결재대기·공람대기 목록 화면을 띄우고 점검 버튼을 누르면 새 문서·긴급·확인 필요 문서를 골라 줍니다. 공문을 열어 두고 <b>지금 연 공문 분석</b>을 누르면 마감일과 할 일을 알려 줍니다.</li>
-          <li><b>공문 작성</b>은 같은 PC의 <b>공문작성 도우미</b>(gongmun-helper 폴더의 <b>실행.bat</b>)가 맡습니다. K-에듀파인 메뉴에서 어떤 공문인지 적고 <b>공문작성 도우미로 보내기</b>를 누르면 도우미 창이 앞으로 나옵니다.</li>
+          <li><b>공문 작성</b>은 같은 PC의 <b>공문헬퍼</b>(공문작성 도우미, 아래 설치 방법 참고)가 맡습니다. K-에듀파인 메뉴에서 어떤 공문인지 적고 <b>공문작성 도우미로 보내기</b>를 누르면 도우미 창이 앞으로 나옵니다.</li>
           <li>자동 입력이 끝나면 화면에서 내용을 <b>눈으로 확인한 뒤</b> 직접 저장·상신합니다. 두 프로그램 모두 상신·저장 버튼은 누르지 않습니다(나이스 승인요청은 패널의 버튼을 눌렀을 때만 대신 누름).</li>
         </ol>
-        <p class="help">오른쪽 위 표시: <b>AI 연결됨</b>은 설정한 AI가 답할 수 있다는 뜻, <b>도우미 v…</b>는 공문작성 도우미가 켜져 연결됐다는 뜻입니다.</p>
+        <details class="inner-guide">
+          <summary>공문헬퍼(공문작성 도우미) 설치 방법</summary>
+          <p class="help">공문헬퍼는 K-에듀파인 공문 작성 창(크롬 밖 프로그램)에 AI 초안·제목·본문·결재선·과제카드·수신처를 넣어 주는 PC 프로그램입니다. 공문 작성 기능을 쓸 때만 설치하면 됩니다.</p>
+          <ol>
+            <li><b>파이썬 설치(처음 한 번)</b>: <b>python.org</b>에서 Python 3를 받아 설치합니다. 설치 첫 화면 아래의 <b>Add python.exe to PATH</b>에 꼭 체크하세요.</li>
+            <li><b>공문헬퍼 받기</b>: <b>https://neis.me/data/gongmun-helper.zip</b> 을 내려받습니다.</li>
+            <li><b>압축 풀기</b>: 받은 파일을 오른쪽 클릭 → <b>압축 풀기</b>로 내 문서 등 원하는 곳에 풉니다. <b>gongmun-helper</b> 폴더가 생깁니다.</li>
+            <li><b>실행</b>: 그 폴더의 <b>실행.bat</b>을 더블클릭합니다. 처음 한 번은 필요한 프로그램을 설치하느라 1~2분 걸립니다(인터넷 필요).</li>
+            <li><b>연결 확인</b>: 이 패널 오른쪽 위에 <b>공문헬퍼 v…</b>가 초록색으로 보이면 연결된 것입니다. 다음부터는 실행.bat만 더블클릭하면 됩니다.</li>
+          </ol>
+          <p class="help">새 판으로 바꿀 때는 새로 받은 압축 파일을 같은 곳에 풀어 덮어쓰면 됩니다. 결재선 등 설정은 <b>data</b> 폴더에 남습니다. 설치가 실패하면 <b>venv</b> 폴더를 지우고 다시 실행.bat을 누르세요.</p>
+        </details>
+        <p class="help">오른쪽 위 표시: <b>AI 연결됨</b>은 설정한 AI가 답할 수 있다는 뜻, <b>공문헬퍼 v…</b>는 공문작성 도우미(공문헬퍼)가 켜져 연결됐다는 뜻입니다.</p>
       </div>
     </section>
 
