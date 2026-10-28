@@ -59,6 +59,7 @@ function withDefaults(saved = {}) {
   const savedAi = saved.ai || {};
   return {
     myDuties: saved.myDuties || '',
+    neis: { lineName: (saved.neis || {}).lineName || '', phone: (saved.neis || {}).phone || '' },
     slots: { ...(saved.slots || {}) },
     ai: {
       provider: AI_PROVIDERS.includes(savedAi.provider) ? savedAi.provider : DEFAULT_AI.provider,
@@ -471,6 +472,8 @@ function renderAiSettings() {
 
 function renderSettingsForm() {
   $('myDuties').value = settings.myDuties;
+  $('neisLineName').value = settings.neis.lineName;
+  $('neisPhone').value = settings.neis.phone;
   renderAiSettings();
 }
 
@@ -562,6 +565,8 @@ async function handleClearSlot(slotKey) {
 
 function readSettingsForm() {
   settings.myDuties = $('myDuties').value.trim();
+  settings.neis.lineName = $('neisLineName').value.trim();
+  settings.neis.phone = $('neisPhone').value.trim();
   settings.ai.ollamaUrl = trimSlash($('ollamaUrl').value);
   settings.ai.ollamaModel = $('ollamaModel').value;
 }

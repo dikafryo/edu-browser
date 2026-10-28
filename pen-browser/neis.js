@@ -1,7 +1,8 @@
 /* PEN 브라우저 – 나이스 복무·출장 입력
    업무포털 메뉴의 [나이스]를 눌러 나이스 창을 직접 열고(이미 열려 있으면 그 창을 쓰고),
    4세대 나이스(eXBuilder6 화면)의 근무상황 신청·출장 신청 창을 열어 입력칸을 채운다.
-   [승인요청]은 누르지 않는다 — 사용자가 나이스 화면에서 확인하고 직접 누른다.
+   [승인요청]은 사용자가 패널의 [승인요청]을 눌렀을 때만 대신 누르고, 상신 화면에서는 개인결재선만 골라 둔다.
+   [상신]은 누르지 않는다 — 사용자가 나이스 화면에서 확인하고 직접 누른다.
    (sidepanel.js의 $, showNotice, withBusy, fillSelect, openFromPortal, focusTab, sleep 을 함께 쓴다) */
 
 /* ===================== 1. 설정 ===================== */
@@ -41,6 +42,14 @@ const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '
 const MINUTES = Array.from({ length: 12 }, (_, step) => String(step * 5).padStart(2, '0'));
 const DEFAULT_FROM_TIME = '09:00';
 const DEFAULT_TO_TIME = '18:00';
+// 신청 창별 [승인요청] 버튼. 근무상황 목록 화면의 [신청]도 btnAply 라서 창(app)을 꼭 맞춰 찾는다
+const NEIS_FORMS = {
+  leave: { form: 'edu/ga/srv/mym/mm/srv_mymmm00_p00', submit: 'btnAprvDmnd' },
+  trip: { form: 'edu/ga/srv/mym/mm/srv_mymmm03_p00', submit: 'btnAply' },
+};
+// [승인요청] 뒤 중복 확인 창을 사용자가 읽고 고르는 시간까지 넉넉히 지켜본다
+const SUBMIT_WATCH_MS = 5 * 60 * 1000;
+const SUBMIT_POLL_MS = 1000;
 
 /* ===================== 2. 데이터 처리 ===================== */
 function toNeisDate(value) {
@@ -96,6 +105,7 @@ function buildTripJob(input) {
   const to = splitTime(input.toTime);
   return {
     kind: 'trip',
+    phone: input.phone,
     steps: [
       { type: 'combo', id: 'cmbBsrpScCd', label: input.tripKind, name: '출장종류', wait: 600 },
       { type: 'date', id: 'dti1', value: toNeisDate(input.fromDate), name: '시작일' },
@@ -197,6 +207,33 @@ async function neisPageRun(job) {
   if (!isReady()) return { ok: false, problem: '신청 창이 자료를 다 받지 못했습니다. 잠시 뒤 다시 눌러 주세요.', notices: await collectNotices() };
   await sleep(SETTLE_MS);
 
+  /* 출장 신청 창은 기간 표(grdMain)와 출장자 표(grdTgpr)에 비상연락처(emgCnctTelno)가 따로 있다.
+     기간을 바꾸는 동안 나이스가 채워 둔 번호가 한쪽에서 비면 승인요청 때 '전화번호 필수'로 막히므로,
+     채우기 전 번호를 기억해 두었다가 빈 칸에 다시 넣는다. 나이스에도 번호가 없을 때만 설정의 번호를 쓴다 */
+  const phoneCells = () => {
+    const cells = [];
+    ['grdMain', 'grdTgpr'].forEach((gridId) => {
+      const grid = form.lookup(gridId);
+      const dataSet = grid && grid.dataSet;
+      if (!dataSet || !dataSet.getColumnNames().includes('emgCnctTelno')) return;
+      for (let row = 0; row < dataSet.getRowCount(); row += 1) {
+        cells.push({ dataSet, row, value: String(dataSet.getValue(row, 'emgCnctTelno') || '').trim() });
+      }
+    });
+    return cells;
+  };
+  const firstPhone = (cells) => (cells.find((cell) => cell.value) || {}).value || '';
+  const fillEmptyPhone = (savedPhone) => {
+    const cells = phoneCells();
+    const empty = cells.filter((cell) => !cell.value);
+    if (empty.length === 0) return null;
+    const phone = firstPhone(cells) || savedPhone || job.phone;
+    if (!phone) return { name: '비상연락처', ok: false, problem: '나이스에 등록된 번호가 없습니다. 설정에 비상연락처를 적거나 나이스에서 직접 적어 주세요.' };
+    empty.forEach(({ dataSet, row }) => dataSet.setValue(row, 'emgCnctTelno', phone));
+    return { name: '비상연락처: 비어 있던 칸에 넣음', ok: true };
+  };
+  const phoneBefore = firstPhone(phoneCells());
+
   const results = [];
   const placed = [];
   for (const step of job.steps) {
@@ -238,6 +275,8 @@ async function neisPageRun(job) {
     await sleep(step.wait || 250);
   }
   await sleep(SETTLE_MS);
+  const phoneResult = fillEmptyPhone(phoneBefore);
+  if (phoneResult) results.push(phoneResult);
   // 화면이 뒤늦게 기본값으로 되돌린 칸이 있으면 성공으로 보고하지 않는다
   placed.forEach(({ control, expect, result }) => {
     if (String(control.value) !== expect) {
@@ -246,6 +285,70 @@ async function neisPageRun(job) {
     }
   });
   return { ok: true, results, notices: await collectNotices() };
+}
+
+/* 나이스 화면 안(MAIN world)에서 실행된다. 열린 신청 창의 [승인요청]을 누른다.
+   지금 떠 있는 화면(앱)마다 표시를 남겨, 누른 뒤 새로 뜬 화면(중복 확인·상신)만 골라 볼 수 있게 한다 */
+function neisPageSubmit(forms, preferKind) {
+  if (typeof cpr === 'undefined' || !cpr.core) return { ok: false, problem: '4세대 나이스 화면이 아닙니다.' };
+  const apps = cpr.core.Platform.INSTANCE.getAllRunningAppInstances();
+  const kinds = [preferKind, ...Object.keys(forms).filter((kind) => kind !== preferKind)];
+  const kind = kinds.find((each) => apps.some((app) => app.app.id === forms[each].form));
+  if (!kind) return { ok: false, problem: '열린 신청 창이 없습니다. 먼저 [나이스 신청 창에 넣기]를 눌러 내용을 채워 주세요.' };
+  const form = apps.filter((app) => app.app.id === forms[kind].form).pop();
+  const button = form.lookup(forms[kind].submit);
+  if (!button) return { ok: false, problem: '신청 창에서 [승인요청] 버튼을 찾지 못했습니다. 나이스 화면에서 직접 눌러 주세요.' };
+  apps.forEach((app) => { app.penSeenBeforeSubmit = true; });
+  // 나이스가 확인 창을 띄우는 동안 이 함수가 묶이지 않도록 클릭은 다음 차례로 미룬다
+  setTimeout(() => button.click(), 0);
+  return { ok: true, formId: forms[kind].form };
+}
+
+/* 나이스 화면 안(MAIN world)에서 실행된다. [승인요청] 뒤 새로 뜬 화면을 읽어 지금 어느 단계인지 알려 준다.
+   개인결재선 목록(콤보 또는 표)에 설정의 결재선명이 있으면 골라 둔다. [상신]은 누르지 않는다 */
+function neisPageWatch(formId, lineName) {
+  const squash = (text) => String(text || '').replace(/\s+/g, '');
+  const apps = cpr.core.Platform.INSTANCE.getAllRunningAppInstances();
+  const fresh = apps.filter((app) => !app.penSeenBeforeSubmit);
+  if (fresh.length === 0) return { state: apps.some((app) => app.app.id === formId) ? 'waiting' : 'closed' };
+  const found = { texts: [], buttons: [], combos: [], grids: [] };
+  const walk = (control, depth) => {
+    if (!control || depth > 14) return;
+    if (control.type === 'output' && control.value) found.texts.push(String(control.value).trim().slice(0, 200));
+    if (control.type === 'button' && control.value) found.buttons.push(String(control.value).trim());
+    if (control.type === 'combobox' && control.getItems) found.combos.push(control);
+    if (control.type === 'grid' && control.dataSet) found.grids.push(control);
+    if (control.getChildren) control.getChildren().forEach((child) => walk(child, depth + 1));
+  };
+  fresh.forEach((app) => walk(app.getContainer(), 0));
+
+  const wanted = squash(lineName);
+  for (const combo of wanted ? found.combos : []) {
+    const item = combo.getItems().find((it) => squash(it.label) === wanted);
+    if (!item) continue;
+    if (combo.value !== item.value) combo.selectItemByValue(item.value);
+    return { state: 'ready' };
+  }
+  for (const grid of wanted ? found.grids : []) {
+    const dataSet = grid.dataSet;
+    const columns = dataSet.getColumnNames();
+    for (let row = 0; row < dataSet.getRowCount(); row += 1) {
+      if (!columns.some((column) => squash(dataSet.getValue(row, column)) === wanted)) continue;
+      if (grid.selectRows) grid.selectRows([row]);
+      if (grid.focusCell) grid.focusCell(row, 0);
+      return { state: 'ready' };
+    }
+  }
+  if (found.buttons.some((label) => squash(label).includes('상신'))) {
+    // 결재선 콤보의 이름들을 알려 주어 설정에 무엇을 적을지 알 수 있게 한다
+    const lineNames = found.combos.filter((combo) => /결재|Atrz|Line/i.test(`${combo.id} ${combo.fieldLabel || ''}`))
+      .flatMap((combo) => combo.getItems().map((it) => String(it.label).trim()))
+      .filter((label) => label && label !== '선택');
+    return { state: 'submit', lineNames: lineNames.slice(0, 20) };
+  }
+  // 글자도 버튼도 아직 없으면 다음 화면을 그리는 중이다
+  if (found.texts.length === 0 && found.buttons.length === 0) return { state: 'waiting' };
+  return { state: 'popup', texts: found.texts.filter(Boolean).slice(0, 12), buttons: found.buttons.slice(0, 8) };
 }
 
 async function findNeisTab() {
@@ -287,18 +390,40 @@ async function getNeisTab() {
   return opened;
 }
 
-async function runNeisJob(job) {
-  const tab = await getNeisTab();
+async function runInNeis(tab, func, args) {
   let frames;
   try {
-    frames = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: neisPageRun, args: [job] });
+    frames = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func, args });
   } catch (error) {
     throw new Error('나이스 화면에 접근하지 못했습니다. 나이스 탭을 새로 고친 뒤 다시 눌러 주세요.');
   }
   const reply = frames[0] && frames[0].result;
   if (!reply) throw new Error('나이스 화면이 답하지 않았습니다. 나이스 탭을 새로 고친 뒤 다시 눌러 주세요.');
+  return reply;
+}
+
+async function runNeisJob(job) {
+  const tab = await getNeisTab();
+  const reply = await runInNeis(tab, neisPageRun, [job]);
   await focusTab(tab);
   return reply;
+}
+
+// 승인요청을 누른 뒤 상신 화면에서 결재선을 고를 때까지(또는 창이 닫힐 때까지) 지켜보며 단계마다 onStep 으로 알린다
+// 확인 창이 사라진 뒤 신청 창만 남아 있으면(3초) 사용자가 [취소]를 고른 것으로 본다
+async function watchSubmit(tab, formId, lineName, onStep) {
+  let sawPopup = false;
+  let quietPolls = 0;
+  for (let waited = 0; waited < SUBMIT_WATCH_MS; waited += SUBMIT_POLL_MS) {
+    await sleep(SUBMIT_POLL_MS);
+    const step = await runInNeis(tab, neisPageWatch, [formId, lineName]);
+    if (['ready', 'submit', 'closed'].includes(step.state)) return step;
+    sawPopup = sawPopup || step.state === 'popup';
+    quietPolls = step.state === 'waiting' ? quietPolls + 1 : 0;
+    if (sawPopup && quietPolls >= 3) return { state: 'cancelled' };
+    if (step.state === 'popup') onStep(step);
+  }
+  return { state: 'timeout' };
 }
 
 /* ===================== 3. 화면 그리기 ===================== */
@@ -355,6 +480,46 @@ function renderNeisResult(reply) {
   $('neisLog').replaceChildren(...items);
 }
 
+function renderInfoLines(lines) {
+  $('neisLog').replaceChildren(...lines.map((text) => {
+    const li = document.createElement('li');
+    li.dataset.kind = 'info';
+    li.textContent = text;
+    return li;
+  }));
+}
+
+// 중복 확인 같은 창이 떠 있는 동안 그 글자와 버튼을 보여 주어 사용자가 나이스에서 고르게 한다
+function showSubmitStep(step) {
+  if (step.state === 'waiting') {
+    showNotice($('neisMsg'), 'info', '승인요청을 눌렀습니다. 나이스가 다음 화면을 여는 중입니다…');
+    return;
+  }
+  showNotice($('neisMsg'), 'warn', '나이스에 확인 창이 떴습니다. 내용을 읽고 나이스 화면에서 [취소] 또는 [계속 진행]을 골라 주세요. 계속 진행하면 상신 화면에서 결재선을 골라 둡니다.');
+  const lines = step.texts.map((text) => `나이스 안내: ${text}`);
+  if (step.buttons.length) lines.push(`나이스 화면의 버튼: ${step.buttons.join(' · ')}`);
+  renderInfoLines(lines);
+}
+
+function showSubmitEnd(step, lineName) {
+  if (step.state === 'ready') {
+    showNotice($('neisMsg'), 'ok', `상신 화면에서 개인결재선 '${lineName}'을(를) 골라 두었습니다. 결재선을 확인한 뒤 나이스에서 직접 [상신]을 눌러 주세요.`);
+    renderInfoLines([]);
+  } else if (step.state === 'submit') {
+    showNotice($('neisMsg'), 'warn', lineName
+      ? `상신 화면에서 개인결재선 '${lineName}'을(를) 찾지 못했습니다. 나이스에서 직접 고른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
+      : '상신 화면이 열렸습니다. 나이스에서 개인결재선을 고른 뒤 [상신]을 눌러 주세요. 설정에 결재선 이름을 적어 두면 다음부터 골라 둡니다.');
+    renderInfoLines(step.lineNames.length ? [`나이스의 결재선 목록: ${step.lineNames.join(' · ')}`] : []);
+  } else if (step.state === 'closed') {
+    showNotice($('neisMsg'), 'info', '신청 창이 닫혔습니다. 취소했다면 내용을 고쳐 다시 넣어 주세요.');
+  } else if (step.state === 'cancelled') {
+    showNotice($('neisMsg'), 'info', '승인요청을 멈췄습니다. 신청 창의 내용을 고친 뒤 다시 [승인요청]을 누를 수 있습니다.');
+    renderInfoLines([]);
+  } else {
+    showNotice($('neisMsg'), 'warn', '상신 화면이 오래 열리지 않아 지켜보기를 멈췄습니다. 나이스 화면에서 이어서 진행해 주세요.');
+  }
+}
+
 /* ===================== 4. 이벤트 연결 ===================== */
 const NEIS_FIELD_IDS = ['neisMajor', 'neisMinor', 'neisDetail', 'neisReasonCode', 'neisFromDate', 'neisToDate',
   'neisReason', 'neisDestination', 'tripKind', 'tripPlace', 'tripPurpose', 'tripMovement'];
@@ -368,6 +533,7 @@ function readNeisInput() {
     reason: value('neisReason'), destination: value('neisDestination'),
     tripKind: value('tripKind'), place: value('tripPlace'), purpose: value('tripPurpose'), movement: value('tripMovement'),
     officialCar: $('tripOfficialCar').checked, noTravelPay: $('tripNoPay').checked,
+    phone: settings.neis.phone,
   };
 }
 
@@ -412,7 +578,7 @@ async function handleNeisFill() {
       const failed = reply.results.filter((result) => !result.ok).length;
       showNotice($('neisMsg'), failed ? 'warn' : 'ok', failed
         ? `${failed}칸을 넣지 못했습니다. 아래를 보고 나이스에서 직접 채운 뒤 [승인요청]을 눌러 주세요.`
-        : '입력을 마쳤습니다. 나이스 화면에서 내용을 확인한 뒤 직접 [승인요청]을 눌러 주세요.');
+        : '입력을 마쳤습니다. 나이스 화면에서 내용을 확인한 뒤 아래 [승인요청]을 눌러 주세요.');
       renderNeisResult(reply);
     } catch (error) {
       showNotice($('neisMsg'), 'error', error.message);
@@ -420,14 +586,23 @@ async function handleNeisFill() {
   });
 }
 
-async function handleOpenNeis() {
-  await withBusy($('openNeisBtn'), '여는 중…', async () => {
+async function handleNeisSubmit() {
+  const preferKind = document.querySelector('input[name="neisKind"]:checked').value;
+  const { lineName } = settings.neis;
+  await withBusy($('neisSubmitBtn'), '진행 중…', async () => {
+    $('neisFillBtn').disabled = true;
     try {
-      showNotice($('neisMsg'), 'info', '나이스 창을 여는 중입니다…');
-      await focusTab(await getNeisTab());
-      showNotice($('neisMsg'), 'ok', '나이스 창을 열었습니다.');
+      const tab = await findNeisTab();
+      if (!tab) throw new Error('나이스 창이 없습니다. 먼저 [나이스 신청 창에 넣기]를 눌러 내용을 채워 주세요.');
+      const started = await runInNeis(tab, neisPageSubmit, [NEIS_FORMS, preferKind]);
+      if (!started.ok) throw new Error(started.problem);
+      await focusTab(tab);
+      showSubmitStep({ state: 'waiting' });
+      showSubmitEnd(await watchSubmit(tab, started.formId, lineName, showSubmitStep), lineName);
     } catch (error) {
       showNotice($('neisMsg'), 'error', error.message);
+    } finally {
+      $('neisFillBtn').disabled = false;
     }
   });
 }
@@ -466,7 +641,7 @@ function initNeis() {
     radio.addEventListener('change', () => showNeisKind(radio.value));
   });
   $('neisFillBtn').addEventListener('click', handleNeisFill);
-  $('openNeisBtn').addEventListener('click', handleOpenNeis);
+  $('neisSubmitBtn').addEventListener('click', handleNeisSubmit);
 }
 
 initNeis();

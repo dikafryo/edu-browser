@@ -54,7 +54,7 @@ def main():
         page = build_page(folder)
         result = subprocess.run(
             [chrome, "--headless=new", "--disable-gpu", "--allow-file-access-from-files",
-             f"--user-data-dir={os.path.join(folder, 'profile')}", "--virtual-time-budget=5000",
+             f"--user-data-dir={os.path.join(folder, 'profile')}", "--virtual-time-budget=20000",
              "--dump-dom", file_url(page)],
             capture_output=True, text=True, encoding="utf-8", timeout=120,
         )

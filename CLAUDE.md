@@ -31,7 +31,7 @@ python -m gongmun
 
 ```powershell
 cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기(20개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능 42개(headless 크롬, 가짜 chrome API)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 54개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -68,14 +68,16 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 
 ## 업무 사이트 화면 구조 (2026. 10. 부산 기준, 직접 확인)
 
-실제 업무 시스템이다. **신청·승인요청·상신·저장 버튼은 시험 중에도 누르지 않는다.** 채운 신청 창은 `btnCancel`(닫기)로 닫는다.
+실제 업무 시스템이다. **신청·승인요청·상신·저장 버튼은 시험 중에도 누르지 않는다.** (제품 기능으로는 사용자가 패널의 [승인요청]을 눌렀을 때만 나이스 승인요청을 대신 누른다. [상신]은 어떤 경우에도 누르지 않는다.) 채운 신청 창은 `btnCancel`(닫기)로 닫는다.
 
 **업무포털** `pen.eduptl.kr` — 위 메뉴의 `나이스`·`K-에듀파인` 이 새 탭으로 SSO 연결된다. 나이스·K-에듀파인 주소를 직접 열면 로그인이 안 되므로 확장은 업무포털 탭에서 그 메뉴 링크(글자가 꼭 맞는 `<a>`)를 눌러 연다(`openFromPortal`). 확장이 대신 누른 클릭은 팝업 차단에 걸릴 수 있어, 5초 안에 창이 안 뜨면 링크의 http 주소를 새 탭으로 연다. **업무포털 주소를 새 탭에서 직접 열면 로그인 화면(`bpm_lgn_lg00_001.do?noEpSession`)으로 간다**(로그인된 탭은 그대로)
 
 **4세대 나이스** `pen.neis.go.kr/jsp/main.jsp` — eXBuilder6(`cpr`, `cl-control`). HTML 입력칸에 id 가 없으므로 DOM 이 아니라 eXBuilder API 로 다룬다(`neis.js` 의 `neisPageRun`, `world: 'MAIN'` 으로 주입).
 - 화면 = 앱 인스턴스: `cpr.core.Platform.INSTANCE.getAllRunningAppInstances()` → `app.app.id`, 컨트롤은 `app.lookup('id')`
-- 근무상황: 목록 `edu/ga/srv/mym/mm/srv_mymmm00_m00`(버튼 `btnAply`) → 신청 창 `..._p00`. 칸: `cmbWorkSittnLclfCd`(대분류) → `cmbWorkSittnSclfCd`(소분류) → `cmbWorkSittnDtlCd`(상세), `cmbAvRsnCd`(연가사유), `dtiWorkYmdFrom/To`, `cmbBgngH/M`, `cmbEndH/M`, `ipbWorkSittnRsnCn`(사유), `ipbDestiNm`(목적지), `btnAprvDmnd`(승인요청 — 누르지 않음), `btnCancel`
-- 출장: 목록 `edu/ga/srv/mym/mm/srv_mymmm03_m00` → 신청 창 `..._p00`. 칸: `cmbBsrpScCd`(출장종류), 기간은 표 안 편집칸 `dti1`/`dti2`·`cmb10`/`cmb2`(시작 시·분)/`cmb3`/`cmb4`(종료), `ipbDobtNm`(출장지), `ipbBsrpCn`(목적), `ipbMvmnMteCn`(이동사항), `cbxOfflVhcUtilzYn`(공용차량), `cbxTvctPyrfYn`(여비 없음), `btnAply`(승인요청 — 누르지 않음). 출장자 표 시간은 기간과 자동으로 맞춰진다(`sameBsrpPriodYn=Y`)
+- 근무상황: 목록 `edu/ga/srv/mym/mm/srv_mymmm00_m00`(버튼 `btnAply`) → 신청 창 `..._p00`. 칸: `cmbWorkSittnLclfCd`(대분류) → `cmbWorkSittnSclfCd`(소분류) → `cmbWorkSittnDtlCd`(상세), `cmbAvRsnCd`(연가사유), `dtiWorkYmdFrom/To`, `cmbBgngH/M`, `cmbEndH/M`, `ipbWorkSittnRsnCn`(사유), `ipbDestiNm`(목적지), `btnAprvDmnd`(승인요청), `btnCancel`
+- 출장: 목록 `edu/ga/srv/mym/mm/srv_mymmm03_m00` → 신청 창 `..._p00`. 칸: `cmbBsrpScCd`(출장종류), 기간은 표 안 편집칸 `dti1`/`dti2`·`cmb10`/`cmb2`(시작 시·분)/`cmb3`/`cmb4`(종료), `ipbDobtNm`(출장지), `ipbBsrpCn`(목적), `ipbMvmnMteCn`(이동사항), `cbxOfflVhcUtilzYn`(공용차량), `cbxTvctPyrfYn`(여비 없음), `btnAply`(승인요청). 출장자 표 시간은 기간과 자동으로 맞춰진다(`sameBsrpPriodYn=Y`)
+- **비상연락처**: 기간 표(`grdMain`)와 출장자 표(`grdTgpr`)의 데이터셋에 `emgCnctTelno` 가 따로 있다. 나이스가 처음 채운 번호가 패널로 채우는 동안 한쪽에서 비면 승인요청 때 전화번호 필수 안내로 막힌다 → 채우기 전 번호를 기억했다가 빈 칸에 다시 넣고, 나이스에도 없을 때만 패널 설정의 번호를 쓴다
+- **승인요청 흐름** (`neisPageSubmit` → `neisPageWatch`): 누르기 전 떠 있는 앱 인스턴스마다 `penSeenBeforeSubmit` 표시를 남기고, 그 뒤 새로 뜬 앱만 읽는다. 결재선명과 글자가 같은 콤보 항목(또는 표의 행)이 있으면 고르고 멈춘다. `상신` 버튼이 있는데 못 찾으면 결재선 목록을 알려 준다. 그 밖의 새 창(중복 확인 등)은 글자·버튼을 패널에 보여 주고 사용자가 고르기를 기다린다(창이 사라지고 3초간 조용하면 취소로 본다). 중복 확인·상신 화면의 앱 id 는 아직 직접 확인하지 못해 글자로 찾는다 — 어긋나면 상신 화면을 띄운 채 설정 > **NEIS 화면 구조 점검**(eXBuilder 칸·버튼·콤보 선택지·표 열 이름만 적음)으로 구조를 받아 고칠 것
 - **콤보는 `selectItemByValue`** 로 골라야 화면의 연결 동작(소분류 갱신·신청시간 계산)이 돈다. `.value =` 는 이벤트가 없다. 날짜·글자는 `putValue`
 - **신청 창이 처음 자료를 다 받기 전에 넣으면 기본값(오늘 09:00)으로 덮어쓴다.** 대분류/출장종류 콤보에 항목이 차고 `grdMain` 에 행이 생긴 뒤 1.2초 더 기다린다. 끝나면 모든 칸을 다시 읽어 되돌려진 칸은 실패로 알린다
 - 출장 기간을 데이터셋(`dataSet.setValue`)에 바로 쓰면 날짜는 바뀌어도 신청시간이 다시 계산되지 않는다 → 편집칸 컨트롤로 넣는다

@@ -104,7 +104,62 @@
   // 12. 도우미 PenGPT 대신 묻기: 도우미가 꺼져 있으면 아무것도 하지 않는다
   check('relay idle when helper offline', (await relayHelperAiJob()) === undefined && $('helperAiMsg').hidden, null);
 
-  // 13. 기타
+  // 13. 나이스 승인요청·결재선·비상연락처 (가짜 eXBuilder 화면)
+  const fakeDataSet = (columns, rows) => ({
+    getColumnNames: () => columns, getRowCount: () => rows.length,
+    getValue: (row, column) => rows[row][column], setValue: (row, column, value) => { rows[row][column] = value; },
+  });
+  const fakeControl = (type, id, extra = {}) => ({ type, id, getChildren: () => extra.children || [], ...extra });
+  const fakeApp = (id, controls) => ({
+    app: { id }, lookup: (cid) => controls.find((c) => c.id === cid) || null,
+    getContainer: () => fakeControl('container', 'root', { children: controls }),
+  });
+  const runningApps = [];
+  window.cpr = { core: { Platform: { INSTANCE: { getAllRunningAppInstances: () => runningApps.slice() } } } };
+  check('neis page functions self-contained', [neisPageSubmit, neisPageWatch].every((fn) => !/\bsettings\b|\$\(|chrome\./.test(fn.toString())), null);
+  check('submit without open form', /열린 신청 창이 없습니다/.test(neisPageSubmit(NEIS_FORMS, 'trip').problem), null);
+
+  let submitted = 0;
+  const tripRows = [{ emgCnctTelno: '010-1111-2222' }];
+  const travellerRows = [{ emgCnctTelno: '' }];
+  const tripForm = fakeApp(NEIS_FORMS.trip.form, [
+    fakeControl('combobox', 'cmbBsrpScCd', { getItems: () => [{ label: '선택', value: '' }, { label: '국내출장(관내)', value: '10' }] }),
+    fakeControl('grid', 'grdMain', { dataSet: fakeDataSet(['emgCnctTelno'], tripRows) }),
+    fakeControl('grid', 'grdTgpr', { dataSet: fakeDataSet(['invlFlnm', 'emgCnctTelno'], travellerRows) }),
+    fakeControl('button', 'btnAply', { value: '승인요청', click: () => { submitted += 1; } }),
+  ]);
+  runningApps.push(fakeApp('app/com/main/Index', []), tripForm);
+  const phoneRun = await neisPageRun({ kind: 'trip', phone: '', steps: [] });
+  check('empty traveller phone filled from NEIS number', phoneRun.ok && travellerRows[0].emgCnctTelno === '010-1111-2222' && phoneRun.results.some((r) => r.ok && /비상연락처/.test(r.name)), phoneRun);
+  tripRows[0].emgCnctTelno = ''; travellerRows[0].emgCnctTelno = '';
+  await neisPageRun({ kind: 'trip', phone: '010-3333-4444', steps: [] });
+  check('no NEIS number -> settings phone', tripRows[0].emgCnctTelno === '010-3333-4444' && travellerRows[0].emgCnctTelno === '010-3333-4444', [tripRows, travellerRows]);
+
+  const started = neisPageSubmit(NEIS_FORMS, 'leave');
+  await new Promise((r) => setTimeout(r, 20));
+  check('submit finds the open trip form', started.ok && started.formId === NEIS_FORMS.trip.form && submitted === 1, started);
+  check('watch: nothing new yet', neisPageWatch(started.formId, '출장결재').state === 'waiting', null);
+  const confirmApp = fakeApp('popup/dup', [fakeControl('output', 'o1', { value: '같은 기간에 신청한 출장이 있습니다.' }), fakeControl('button', 'b1', { value: '취소' }), fakeControl('button', 'b2', { value: '계속진행' })]);
+  runningApps.push(confirmApp);
+  const dupStep = neisPageWatch(started.formId, '출장결재');
+  check('watch: duplicate check popup', dupStep.state === 'popup' && dupStep.texts[0].includes('같은 기간') && dupStep.buttons.includes('계속진행'), dupStep);
+  runningApps.splice(runningApps.indexOf(confirmApp), 1);
+  let pickedLine = '';
+  const lineCombo = fakeControl('combobox', 'cmbAtrzLine', { value: '', getItems: () => [{ label: '선택', value: '' }, { label: '기본 결재선', value: 'A' }, { label: '출장 결재', value: 'B' }], selectItemByValue: (v) => { pickedLine = v; } });
+  runningApps.push(fakeApp('popup/atrz', [lineCombo, fakeControl('button', 'btnSubmit', { value: '상신' })]));
+  check('watch: line picked by name', neisPageWatch(started.formId, '출장결재').state === 'ready' && pickedLine === 'B', pickedLine);
+  const noLine = neisPageWatch(started.formId, '없는 결재선');
+  check('watch: line missing -> list names', noLine.state === 'submit' && noLine.lineNames.join('/') === '기본 결재선/출장 결재', noLine);
+  runningApps.length = 0;
+  check('watch: form closed', neisPageWatch(started.formId, '출장결재').state === 'closed', null);
+  delete window.cpr;
+
+  $('neisLineName').value = ' 출장 결재 '; $('neisPhone').value = '010-0000-0000';
+  readSettingsForm();
+  check('neis settings read', settings.neis.lineName === '출장 결재' && settings.neis.phone === '010-0000-0000', settings.neis);
+  check('open-only button replaced', !document.getElementById('openNeisBtn') && $('neisSubmitBtn').textContent === '승인요청', null);
+
+  // 14. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
   check('helper pill shows offline', $('helperStatus').textContent === '도우미 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);

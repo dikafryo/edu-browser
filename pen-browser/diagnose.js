@@ -112,6 +112,28 @@ function probeFormStructure() {
   return lines;
 }
 
+/* 나이스 화면 안(MAIN world)에서 실행된다: 4세대 나이스(eXBuilder6)의 열린 화면마다 칸 종류·이름·제목,
+   버튼 글자, 목록(콤보)의 선택지, 표의 열 이름만 적는다. 입력칸·표에 든 값(개인 복무 내용)은 적지 않는다 */
+function probeNeisApps() {
+  if (typeof cpr === 'undefined' || !cpr.core) return [];
+  const clip = (text, size = 30) => String(text || '').replace(/\s+/g, ' ').trim().slice(0, size);
+  const lines = [];
+  cpr.core.Platform.INSTANCE.getAllRunningAppInstances().forEach((app) => {
+    lines.push(`== 화면 ${app.app.id}`);
+    const walk = (control, depth) => {
+      if (!control || depth > 14) return;
+      const head = `  ${control.type}:${control.id || '-'}${control.fieldLabel ? ` [${clip(control.fieldLabel)}]` : ''}`;
+      if (control.type === 'button' || control.type === 'output') lines.push(`${head} "${clip(control.value, 40)}"`);
+      if (control.type === 'combobox' && control.getItems) lines.push(`${head} {${control.getItems().slice(0, 20).map((it) => clip(it.label, 15)).join('/')}}`);
+      if (control.type === 'grid' && control.dataSet) lines.push(`${head} 열(${control.dataSet.getRowCount()}행): ${control.dataSet.getColumnNames().slice(0, 30).join(',')}`);
+      if (/input|date|check|radio|editor/.test(control.type || '')) lines.push(head);
+      if (control.getChildren) control.getChildren().forEach((child) => walk(child, depth + 1));
+    };
+    walk(app.getContainer(), 0);
+  });
+  return lines.slice(0, 600);
+}
+
 async function buildNeisStructure() {
   const tabs = await chrome.tabs.query({});
   const neisTabs = tabs.filter((tab) => /neis/i.test(tab.url || '') || /나이스|NEIS/.test(tab.title || ''));
@@ -120,6 +142,13 @@ async function buildNeisStructure() {
   for (const tab of neisTabs) {
     lines.push('', `[탭 "${(tab.title || '').slice(0, DIAG_TITLE_LIMIT)}" ${shortUrl(tab.url)}]`);
     try {
+      // 4세대 나이스는 HTML 칸에 이름이 없으므로 eXBuilder 화면 구조를 읽고, 아니면 일반 웹 구조를 읽는다
+      const appFrames = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: probeNeisApps });
+      const appLines = (appFrames[0] && appFrames[0].result) || [];
+      if (appLines.length) {
+        lines.push(...appLines);
+        continue;
+      }
       const results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: probeFormStructure });
       results.forEach((result) => lines.push(...(result.result || [])));
     } catch (error) {

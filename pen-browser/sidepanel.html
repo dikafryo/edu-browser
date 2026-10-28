@@ -31,10 +31,10 @@
         <ol>
           <li><b>업무포털에 로그인해 둡니다.</b> 나이스·K-에듀파인 창은 PEN 브라우저가 업무포털 메뉴를 눌러 직접 엽니다.</li>
           <li><b>처음 한 번:</b> <b>설정</b>에서 내 담당 업무를 적고 AI(자체 AI 서버 또는 PenGPT)를 고른 뒤 <b>설정 저장</b>을 누릅니다.</li>
-          <li><b>나이스</b>: 근무상황(연가·병가·외출 등)이나 출장 내용을 적고 <b>나이스 신청 창에 넣기</b>를 누르면, 나이스 창을 열고 신청 창의 칸을 채웁니다. <b>[승인요청]은 나이스 화면에서 직접</b> 누르세요.</li>
+          <li><b>나이스</b>: 근무상황(연가·병가·외출 등)이나 출장 내용을 적고 <b>나이스 신청 창에 넣기</b>를 누르면, 나이스 창을 열고 신청 창의 칸을 채웁니다. 확인 후 <b>승인요청</b>을 누르면 상신 화면까지 진행해 개인결재선을 골라 둡니다(처음 한 번 <b>설정</b>에 결재선 이름을 적어 두세요). <b>[상신]은 직접</b> 누르세요.</li>
           <li><b>K-에듀파인</b>: 결재대기·공람대기 목록 화면을 띄우고 점검 버튼을 누르면 새 문서·긴급·확인 필요 문서를 골라 줍니다. 공문을 열어 두고 <b>지금 연 공문 분석</b>을 누르면 마감일과 할 일을 알려 줍니다.</li>
           <li><b>공문 작성</b>은 같은 PC의 <b>공문작성 도우미</b>(gongmun-helper 폴더의 <b>실행.bat</b>)가 맡습니다. K-에듀파인 메뉴에서 어떤 공문인지 적고 <b>공문작성 도우미로 보내기</b>를 누르면 도우미 창이 앞으로 나옵니다.</li>
-          <li>자동 입력이 끝나면 화면에서 내용을 <b>눈으로 확인한 뒤</b> 직접 승인요청·저장·상신합니다. 두 프로그램 모두 그 버튼은 누르지 않습니다.</li>
+          <li>자동 입력이 끝나면 화면에서 내용을 <b>눈으로 확인한 뒤</b> 직접 저장·상신합니다. 두 프로그램 모두 상신·저장 버튼은 누르지 않습니다(나이스 승인요청은 패널의 버튼을 눌렀을 때만 대신 누름).</li>
         </ol>
         <p class="help">오른쪽 위 표시: <b>AI 연결됨</b>은 설정한 AI가 답할 수 있다는 뜻, <b>도우미 v…</b>는 공문작성 도우미가 켜져 연결됐다는 뜻입니다.</p>
       </div>
@@ -44,7 +44,7 @@
     <section id="tab-neis" class="tab-panel" role="tabpanel" hidden>
       <div class="card">
         <h2>나이스 복무·출장 입력</h2>
-        <p class="help">업무포털에 로그인해 두고 적은 뒤 누르면, 업무포털 메뉴의 <b>나이스</b>를 눌러 창을 열고 신청 창의 칸을 채웁니다. <b>[승인요청]은 누르지 않습니다</b> — 나이스 화면에서 확인하고 직접 누르세요.</p>
+        <p class="help">업무포털에 로그인해 두고 적은 뒤 누르면, 업무포털 메뉴의 <b>나이스</b>를 눌러 창을 열고 신청 창의 칸을 채웁니다. 채운 내용을 나이스 화면에서 확인한 뒤 <b>[승인요청]</b>을 누르면 승인요청을 대신 누르고, 상신 화면에서 설정의 개인결재선까지 골라 둡니다. <b>[상신]은 직접</b> 누르세요.</p>
         <fieldset class="seg">
           <legend class="sr-only">신청 종류</legend>
           <label><input type="radio" name="neisKind" value="leave" checked> 근무상황 (연가·병가·외출 등)</label>
@@ -127,7 +127,7 @@
         </div>
 
         <button id="neisFillBtn" class="btn btn-main" type="button">나이스 신청 창에 넣기</button>
-        <button id="openNeisBtn" class="btn btn-sub" type="button">나이스 창만 열기</button>
+        <button id="neisSubmitBtn" class="btn btn-sub" type="button">승인요청</button>
         <p id="neisMsg" class="notice" hidden></p>
         <ul id="neisLog" class="result-list"></ul>
       </div>
@@ -174,6 +174,14 @@
         <label for="myDuties">내 담당 업무</label>
         <textarea id="myDuties" rows="3" placeholder="예) 정보화 기기 관리, 개인정보 보호, 업무포털 계정 관리"></textarea>
         <p class="help">공람 문서 중 내가 꼭 확인할 것을 AI가 고를 때 이 기준을 씁니다. 쉼표로 구분해 적으세요.</p>
+
+        <h3>나이스 승인요청</h3>
+        <label for="neisLineName">개인결재선 이름</label>
+        <input id="neisLineName" placeholder="예) 출장 결재선">
+        <p class="help">나이스 상신 화면의 <b>개인결재선</b> 목록에 있는 결재선명을 그대로 적으세요. [승인요청] 뒤 상신 화면이 뜨면 이 결재선을 골라 둡니다.</p>
+        <label for="neisPhone">비상연락처 (나이스가 비워 둘 때만 사용)</label>
+        <input id="neisPhone" type="tel" placeholder="예) 010-0000-0000">
+        <p class="help">보통은 나이스에 등록된 번호를 그대로 씁니다. 출장 신청 창의 연락처가 비어 있을 때만 이 번호를 넣습니다. 이 PC 안에만 저장됩니다.</p>
 
         <h3>AI 연결</h3>
         <fieldset class="radio-row">
@@ -222,7 +230,7 @@ launchctl setenv OLLAMA_HOST "0.0.0.0"</pre>
         <p id="saveMsg" class="notice" hidden></p>
 
         <h3>문제 진단</h3>
-        <p class="help">새 창(공문 열람 등)을 인식하지 못하거나 공문작성 도우미로 보내지지 않을 때, 그 창을 열어 둔 채 아래 버튼을 누르세요. 창·화면 구조와 도우미 연결 상태만 적으며 공문 내용은 읽지 않습니다.</p>
+        <p class="help">새 창(공문 열람 등)을 인식하지 못하거나 공문작성 도우미로 보내지지 않을 때, 그 창을 열어 둔 채 아래 버튼을 누르세요. 창·화면 구조와 도우미 연결 상태만 적으며 공문 내용은 읽지 않습니다. 나이스 상신 화면에서 결재선을 고르지 못하면 그 화면을 띄운 채 <b>NEIS 화면 구조 점검</b>을 누르세요.</p>
         <button id="diagnoseBtn" class="btn btn-sub btn-small" type="button">새 창·도우미 연결 점검</button>
         <button id="neisStructureBtn" class="btn btn-sub btn-small" type="button">NEIS 화면 구조 점검</button>
         <p id="diagnoseMsg" class="notice" hidden></p>
