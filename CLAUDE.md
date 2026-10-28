@@ -30,8 +30,8 @@ python -m gongmun
 ## 시험
 
 ```powershell
-cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기(20개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능 54개(headless 크롬, 가짜 chrome API)
+cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기·결재선/과제카드 가져오기(29개)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 57개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -44,7 +44,8 @@ python tests\pen-browser\live_reload.py                                 # 확장
 도우미가 `127.0.0.1:47615` 에서 듣고, 확장이 `fetch` 한다.
 
 - `GET /ping` → `{ok, app, version}`. `POST /gongmun {"request"}` → 도우미 ①칸에 채우고 창을 앞으로. **AI 호출·공문 창 입력은 하지 않는다**(사용자가 확인하고 누른다)
-- **도우미의 PenGPT 초안은 거꾸로 흐른다**: PenGPT 는 API 가 없어 도우미가 질문을 `PenBridge` 에 쌓고(`ask_pengpt`), 패널이 2초마다 `POST /ai/next` 로 가져가 `callPenGpt` 로 묻고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 질문(공문 내용)을 담으므로 두 주소 모두 Origin 필수
+- **도우미의 PenGPT 초안은 거꾸로 흐른다**: PenGPT 는 API 가 없어 도우미가 질문을 `PenBridge` 에 쌓고(`ask_pengpt`), 패널이 2초마다 `POST /ai/next` 로 가져가 `callPenGpt` 로 묻고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 질문(공문 내용)을 담으므로 두 주소 모두 Origin 필수. 작업에는 `kind` 가 붙는다(`pengpt` / `edufine_lists`, 패널은 `HELPER_JOBS` 로 나눈다)
+- **나의 결재선·과제카드 가져오기** (`gongmun/edufine_lists.py`): 도우미 ②의 [가져오기] → ① 패널이 열려 있으면 `edufine_lists` 작업으로 크롬 K-에듀파인 탭의 Nexacro 데이터셋을 훑는다(`inbox.js` 의 `readEdufineListsInPage`: 과제카드 열 `tkcrdNm`, 결재선 열은 이름 규칙으로 짐작, 문서 목록 표는 남의 카드가 섞여 건너뜀) → ② 못 얻은 목록만 열린 공문 작성 창에서 읽는다(`read_appr_lines`: `streReportCours` 콤보, `read_task_cards`: 과제카드 선택 창을 열어 `dsAList` 를 읽고 [닫기]). 가져온 이름으로 목록 설정을 바꾸되 '결재할 사람'·'관련 낱말' 메모는 이름이 같으면 남긴다. **2026. 10. 28. 확인: 크롬 K-에듀파인 첫 화면에는 두 목록이 없다**(메뉴·게시판 자료만) — 결재선·과제카드가 보이는 화면을 띄우고 설정 > **K-에듀파인 화면 구조 점검**(자료 이름·열 이름만)으로 열 이름을 확인해 `LINE_COLUMN` 을 맞출 것
 - POST 는 `Origin` 이 `PEN_BROWSER_EXTENSION_IDS` 일 때만 받는다. 웹사이트가 보낸 요청은 Origin 이 달라 거절된다
 - 확장 ID 는 `manifest.json` 의 `key` 로 고정된다 — key 를 바꾸면 `gongmun/config.py` 의 ID 도 바꿀 것
 - 포트는 `gongmun/config.py` 의 `PEN_BRIDGE_PORT` 와 `sidepanel.js` 의 `HELPER_URL` 두 곳에 있다. 같이 바꿀 것

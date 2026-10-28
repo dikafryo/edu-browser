@@ -369,7 +369,23 @@ function sendToHelper(requestText) {
 let helperOnline = false;
 let helperAiBusy = false;
 
-// 도우미가 쌓아 둔 PenGPT 질문을 하나 가져와 PenGPT 탭에 묻고 답(또는 실패 이유)을 돌려준다
+// 도우미가 맡긴 일의 종류별 안내 문구와 할 일. edufine_lists 는 inbox.js 의 readEdufineLists 가 맡는다
+const HELPER_JOBS = {
+  pengpt: {
+    busy: '공문작성 도우미의 요청으로 PenGPT에 공문 초안을 묻는 중입니다. PenGPT 탭을 닫지 마세요…',
+    done: 'PenGPT 답을 공문작성 도우미로 보냈습니다.',
+    failed: 'PenGPT에 묻지 못했습니다',
+    run: (job) => callPenGpt(job.system, job.user),
+  },
+  edufine_lists: {
+    busy: '공문작성 도우미의 요청으로 K-에듀파인 탭에서 나의 결재선·과제카드 이름을 읽는 중입니다…',
+    done: '나의 결재선·과제카드 이름을 공문작성 도우미로 보냈습니다.',
+    failed: 'K-에듀파인 목록을 읽지 못했습니다',
+    run: async () => JSON.stringify(await readEdufineLists()),
+  },
+};
+
+// 도우미가 쌓아 둔 일(PenGPT 질문, K-에듀파인 목록 읽기)을 하나 가져와 하고 결과(또는 실패 이유)를 돌려준다
 async function relayHelperAiJob() {
   if (!helperOnline || helperAiBusy) return;
   let job;
@@ -379,15 +395,21 @@ async function relayHelperAiJob() {
     return;
   }
   if (!job) return;
+  // 예전 도우미는 kind 없이 PenGPT 질문만 보낸다
+  const task = HELPER_JOBS[job.kind || 'pengpt'];
+  if (!task) {
+    await postToHelper('/ai/result', { id: job.id, error: 'PEN 브라우저가 모르는 요청입니다. PEN 브라우저를 새 판으로 고쳐 주세요.' }).catch(() => {});
+    return;
+  }
   helperAiBusy = true;
-  showNotice($('helperAiMsg'), 'info', '공문작성 도우미의 요청으로 PenGPT에 공문 초안을 묻는 중입니다. PenGPT 탭을 닫지 마세요…');
+  showNotice($('helperAiMsg'), 'info', task.busy);
   try {
-    const answer = await callPenGpt(job.system, job.user);
+    const answer = await task.run(job);
     await postToHelper('/ai/result', { id: job.id, answer });
-    showNotice($('helperAiMsg'), 'ok', 'PenGPT 답을 공문작성 도우미로 보냈습니다.');
+    showNotice($('helperAiMsg'), 'ok', task.done);
   } catch (error) {
     await postToHelper('/ai/result', { id: job.id, error: error.message }).catch(() => {});
-    showNotice($('helperAiMsg'), 'error', `PenGPT에 묻지 못했습니다: ${error.message}`);
+    showNotice($('helperAiMsg'), 'error', `${task.failed}: ${error.message}`);
   } finally {
     helperAiBusy = false;
   }

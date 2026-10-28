@@ -159,7 +159,29 @@
   check('neis settings read', settings.neis.lineName === '출장 결재' && settings.neis.phone === '010-0000-0000', settings.neis);
   check('open-only button replaced', !document.getElementById('openNeisBtn') && $('neisSubmitBtn').textContent === '승인요청', null);
 
-  // 14. 기타
+  // 14. 도우미 부탁으로 K-에듀파인 나의 결재선·과제카드 읽기 (가짜 Nexacro)
+  const nexaDataset = (columns, rows) => ({
+    getColCount: () => columns.length, getColID: (i) => columns[i], getRowCount: () => rows.length,
+    getColumn: (row, column) => rows[row][column],
+  });
+  const collection = (items) => Object.assign(items.slice(), {});
+  const lineDs = nexaDataset(['streReportCoursNm', 'streReportCoursId'], [{ streReportCoursNm: '기본 결재선' }, { streReportCoursNm: ' 출장 결재 ' }]);
+  const cardDs = nexaDataset(['tkcrdNm'], [{ tkcrdNm: '[단위과제] 정보보안' }, { tkcrdNm: '[단위과제] 정보보안' }]);
+  const docListDs = nexaDataset(['docSj', 'tkcrdNm'], [{ docSj: '남의 문서', tkcrdNm: '남의 카드' }]);
+  const innerForm = { all: collection([cardDs, docListDs]) };
+  window.nexacro = {
+    getApplication: () => ({
+      mainframe: { frames: collection([{ form: { all: collection([{ form: innerForm }]) } }]) },
+      gdsLine: lineDs,
+    }),
+  };
+  const nexaLists = readEdufineListsInPage();
+  check('edufine lists from nexacro datasets', nexaLists.lines.join('/') === '기본 결재선/출장 결재' && nexaLists.cards.join('/') === '[단위과제] 정보보안', nexaLists);
+  delete window.nexacro;
+  check('edufine lists null outside nexacro', readEdufineListsInPage() === null, null);
+  check('helper job kinds', Object.keys(HELPER_JOBS).join() === 'pengpt,edufine_lists' && !/\$\(|chrome\./.test(readEdufineListsInPage.toString()), null);
+
+  // 15. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
   check('helper pill shows offline', $('helperStatus').textContent === '도우미 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);

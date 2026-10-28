@@ -313,6 +313,24 @@ R = out.join('\n');
 """
 
 
+_APPR_NAMES_SCRIPT = r"""
+var s = document.getElementById('streReportCours'), names = [];
+for (var i = 1; s && i < s.options.length; i++) names.push(String(s.options[i].text).replace(/^\s+|\s+$/g, ''));
+R = names.join('\n');
+"""
+
+
+def _names(result):
+    if result.startswith("ERR "):
+        raise EdufineError("SCRIPT", result)
+    return [name for name in result.split("\n") if name]
+
+
+def read_appr_lines():
+    """공문 작성 창 '나의 결재선' 콤보의 이름들 (첫 줄 '선택'은 뺀다)."""
+    return _names(run_script(_draft_document(), _APPR_NAMES_SCRIPT))
+
+
 def set_appr_line(name):
     """나의 결재선을 골라 적용하고, 적용된 결재경로(처리방법 직위 처리자)를 돌려준다."""
     doc = _draft_document()
@@ -354,6 +372,22 @@ else { f.fnSelectUnitTkcrd(row); R = 'PICKED ' + ds.getColumn(row, 'tkcrdNm'); }
 """
 
 _TASK_SEARCH_SCRIPT = _TASK_FORM + " f.dsSrchParam.setColumn(0, 'tkcrdNm', D('name')); f.fnSearch(); R = 'OK';"
+
+_TASK_NAMES_SCRIPT = _TASK_FORM + r"""
+var ds = f.dsAList, names = [];
+for (var i = 0; i < ds.getRowCount(); i++) names.push(String(ds.getColumn(i, 'tkcrdNm') || '').replace(/^\s+|\s+$/g, ''));
+R = names.join('\n');
+"""
+
+
+def read_task_cards():
+    """과제카드 선택 창을 잠깐 열어 처음 나오는 카드 이름들을 읽고 [닫기]로 닫는다(아무것도 고르지 않음)."""
+    dialog = _open_dialog("fncChooseTkcrd()", TASK_DIALOG_URL, _TASK_OPEN_READY)
+    wait_until(lambda: run_script(dialog, _TASK_LIST_READY) == "READY", SEARCH_WAIT_SEC)
+    try:
+        return _names(run_script(dialog, _TASK_NAMES_SCRIPT))
+    finally:
+        start_action(dialog, f"{_TASK_FORM} f.btnClose_onclick()")
 
 
 def set_task_card(name, dry_run=False):

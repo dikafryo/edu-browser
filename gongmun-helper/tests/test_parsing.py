@@ -7,7 +7,8 @@ from unittest import mock
 
 from gongmun import config
 from gongmun.draft_ai import build_draft_prompt, extract_json, parse_task_cards, request_draft, suggest_task_card
-from gongmun.panel import parse_approval_lines, parse_recipients
+from gongmun.edufine_lists import parse_approval_lines
+from gongmun.panel import parse_recipients
 
 
 class ApprovalLineTest(unittest.TestCase):

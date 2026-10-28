@@ -1,7 +1,7 @@
 """공문작성 도우미 화면 — K-에듀파인 공문 작성 창에 넣을 내용을 만들고 넣는다.
 
     ① 어떤 공문인지 적고 [AI로 초안 만들기]  (자체 AI 서버 또는 PenGPT 로만 보냄)
-    ② 제목·본문 확인, 결재선·과제카드·수신처 고르기
+    ② 제목·본문 확인, 결재선·과제카드·수신처 고르기 (목록은 K-에듀파인에서 가져올 수 있음)
     ③ 공문 작성 창에 넣기 (제목·본문 / 결재선 / 과제카드 / 수신처)
 
 공문 작성 창 조작은 gongmun.draft_window 가 맡는다. 저장·결재올림(상신)은 누르지 않는다.
@@ -15,6 +15,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from gongmun import draft_window
 from gongmun.draft_ai import ollama_asker, parse_task_cards, request_draft
+from gongmun.edufine_lists import fetch_lists, merge_appr_lines, merge_task_cards, parse_approval_lines
 from gongmun.settings_dialog import SettingsDialog
 
 # 엑셀에서 기관명 열을 통째로 붙여 넣을 때 따라오는 제목 줄
@@ -47,18 +48,6 @@ NOTICE_STYLES = {
     "error": "background-color: #fdedec; color: #922b21; border: 1px solid #f5b7b1;",
 }
 NOTICE_MARKS = {"info": "", "ok": "✔ ", "warn": "! ", "error": "✖ "}
-
-
-def parse_approval_lines(text):
-    """'나의 결재선 이름: 사람, 사람' 줄 목록 → [(이름, [사람])]. 사람 이름은 확인용."""
-    lines = []
-    for line in (text or "").splitlines():
-        label, colon, members = line.replace("：", ":").partition(":")
-        label = label.strip()
-        if label:
-            people = [name.strip() for name in members.split(",") if name.strip()] if colon else []
-            lines.append((label, people))
-    return lines
 
 
 def parse_recipients(text):
@@ -152,6 +141,9 @@ class GongmunPanel(QWidget):
 
         # ② 결재선·과제카드·수신처
         layout.addWidget(self._step("② 결재선·과제카드·수신처"))
+        self.lists_help = self._help("")
+        layout.addWidget(self.lists_help)
+        layout.addWidget(self._sub_button("↻ 내 결재선·과제카드 가져오기 (K-에듀파인)", self.fetch_edufine_lists))
         layout.addWidget(QLabel("결재선 (나의 결재선)"))
         self.appr_combo = QComboBox()
         layout.addWidget(self.appr_combo)
@@ -233,6 +225,11 @@ class GongmunPanel(QWidget):
             self.task_combo.addItem(card["name"])
         self.task_combo.setCurrentText(current_card)
 
+        empty = self.appr_combo.count() == 0 or self.task_combo.count() <= 1
+        self.lists_help.setText(
+            "결재선·과제카드 목록이 비어 있습니다. 아래 [가져오기]를 누르면 K-에듀파인에서 내 목록을 읽어 옵니다."
+            if empty else "목록이 바뀌었으면 [가져오기]로 다시 읽어 오세요.")
+
     # ============================================================
     # 실행 공통
     # ============================================================
@@ -262,6 +259,27 @@ class GongmunPanel(QWidget):
         self.host.save_settings()
         self.refresh_lists()
         self.show_notice("ok", "목록·AI 설정을 저장했습니다.")
+
+    def fetch_edufine_lists(self):
+        self._run("K-에듀파인에서 나의 결재선·과제카드를 읽는 중입니다(공문 작성 창이면 과제카드 선택 창이 잠깐 열렸다 닫힙니다).",
+                  fetch_lists, (self.host.pen_bridge,), self._on_lists)
+
+    def _on_lists(self, result):
+        settings = self.host.settings
+        if result["lines"]:
+            settings["appr_lines"] = merge_appr_lines(settings.get("appr_lines", ""), result["lines"])
+        if result["cards"]:
+            settings["task_cards"] = merge_task_cards(settings.get("task_cards", ""), result["cards"])
+        self.host.save_settings()
+        self.refresh_lists()
+        missing = [name for name, values in (("결재선", result["lines"]), ("과제카드", result["cards"])) if not values]
+        text = (f"{' · '.join(result['sources'])}에서 결재선 {len(result['lines'])}개, "
+                f"과제카드 {len(result['cards'])}개를 가져와 목록에 넣었습니다.")
+        if missing:
+            self.show_notice("warn", f"{text}\n{'·'.join(missing)}은(는) 찾지 못했습니다. "
+                                     "K-에듀파인 공문 작성 창을 연 뒤 다시 누르면 그 창에서 읽어 옵니다.")
+        else:
+            self.show_notice("ok", text)
 
     def receive_request(self, request_text):
         """PEN 브라우저가 보낸 내용을 ①칸에 채운다. AI 호출은 사용자가 확인한 뒤 누른다."""
@@ -315,7 +333,7 @@ class GongmunPanel(QWidget):
     def fill_approval(self):
         label = self.appr_combo.currentData()
         if not label:
-            self.show_notice("warn", "⚙ 목록·AI 설정에서 결재선 목록을 먼저 적어 주세요.")
+            self.show_notice("warn", "결재선 목록이 비어 있습니다. ②의 [내 결재선·과제카드 가져오기]를 먼저 눌러 주세요.")
             return
         self._run(f"나의 결재선 '{label}'을(를) 고르는 중입니다.", draft_window.set_appr_line, (label,),
                   lambda members: self.show_notice("ok", "결재선을 넣었습니다.\n" + "\n".join(members)))

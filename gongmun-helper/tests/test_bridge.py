@@ -95,8 +95,9 @@ class BridgeTest(unittest.TestCase):
     def test_second_instance_cannot_take_the_port(self):
         self.assertFalse(bridge.PenBridge().start())
 
-    def ask_with_fake_panel(self, panel_reply):
-        """도우미가 PenGPT 에 물으면, 가짜 패널이 /ai/next 로 가져가 /ai/result 로 답한다."""
+    def ask_with_fake_panel(self, panel_reply, ask=None):
+        """도우미가 패널에 일을 맡기면(기본은 PenGPT 질문), 가짜 패널이 /ai/next 로 가져가 /ai/result 로 답한다."""
+        ask = ask or (lambda: self.bridge.ask_pengpt("시스템", "질문", timeout=10))
         request("/ai/next", {}, EXTENSION_ORIGIN)  # 패널이 열려 있다는 신호
         seen = {}
 
@@ -112,7 +113,7 @@ class BridgeTest(unittest.TestCase):
         worker = threading.Thread(target=panel)
         worker.start()
         try:
-            return self.bridge.ask_pengpt("시스템", "질문", timeout=10), seen
+            return ask(), seen
         except RuntimeError as error:
             return error, seen
         finally:
@@ -121,7 +122,7 @@ class BridgeTest(unittest.TestCase):
     def test_pengpt_relay_answer(self):
         answer, seen = self.ask_with_fake_panel({"answer": '{"title":"제목"}'})
         self.assertEqual(answer, '{"title":"제목"}')
-        self.assertEqual((seen["job"]["system"], seen["job"]["user"]), ("시스템", "질문"))
+        self.assertEqual((seen["job"]["kind"], seen["job"]["system"], seen["job"]["user"]), ("pengpt", "시스템", "질문"))
         _, body = request("/ai/next", {}, EXTENSION_ORIGIN)
         self.assertIsNone(body["job"])  # 한 번 가져간 질문은 다시 내주지 않는다
 
@@ -137,6 +138,17 @@ class BridgeTest(unittest.TestCase):
             with self.assertRaises(RuntimeError) as caught:
                 self.bridge.ask_pengpt("시스템", "질문", timeout=1)
         self.assertIn("패널이 열려 있지 않습니다", str(caught.exception))
+
+    def test_edufine_lists_relay(self):
+        reply = {"answer": '{"lines": ["기본 결재선", " "], "cards": ["[단위과제] 정보보안"]}'}
+        lists, seen = self.ask_with_fake_panel(reply, lambda: self.bridge.ask_edufine_lists(timeout=10))
+        self.assertEqual(seen["job"]["kind"], "edufine_lists")
+        self.assertEqual(lists, {"lines": ["기본 결재선"], "cards": ["[단위과제] 정보보안"]})
+
+    def test_edufine_lists_error_is_shown_as_is(self):
+        error, _ = self.ask_with_fake_panel({"error": "크롬에서 K-에듀파인 탭을 찾지 못했습니다."},
+                                            lambda: self.bridge.ask_edufine_lists(timeout=10))
+        self.assertEqual(str(error), "크롬에서 K-에듀파인 탭을 찾지 못했습니다.")
 
 
 if __name__ == "__main__":

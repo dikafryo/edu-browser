@@ -134,6 +134,47 @@ function probeNeisApps() {
   return lines.slice(0, 600);
 }
 
+/* K-에듀파인 화면 안(MAIN world)에서 실행된다: 받아 둔 자료(Nexacro 데이터셋)마다 이름·열 이름·행 수만 적는다.
+   나의 결재선·과제카드가 어느 자료에 있는지 찾을 때 쓴다. 칸에 든 값(문서 제목 등)은 적지 않는다 */
+function probeEdufineDatasets() {
+  if (typeof nexacro === 'undefined' || !nexacro.getApplication) return [];
+  const lines = [];
+  const seen = new Set();
+  const each = (collection, callback) => {
+    for (let index = 0; collection && index < collection.length; index += 1) callback(collection[index]);
+  };
+  const visit = (node, depth, path) => {
+    if (!node || typeof node !== 'object' || depth > 15 || seen.has(node)) return;
+    seen.add(node);
+    if (typeof node.getColID === 'function' && typeof node.getRowCount === 'function') {
+      const columns = Array.from({ length: node.getColCount() }, (_, index) => node.getColID(index));
+      lines.push(`${path}/${node.name || node.id || '?'} (${node.getRowCount()}행): ${columns.slice(0, 25).join(',')}`);
+      return;
+    }
+    const here = node.name ? `${path}/${node.name}` : path;
+    ['all', 'objects', 'components', 'frames'].forEach((key) => each(node[key], (child) => visit(child, depth + 1, here)));
+    ['form', 'frame', 'mainframe'].forEach((key) => visit(node[key], depth + 1, here));
+  };
+  try {
+    const app = nexacro.getApplication();
+    visit(app, 0, 'app');
+    Object.keys(app).forEach((key) => visit(app[key], 1, 'app'));
+  } catch (error) {
+    lines.push(`(읽다가 멈춤: ${error.message})`);
+  }
+  return lines.slice(0, 400);
+}
+
+async function buildEdufineStructure() {
+  const tab = await findEdufineTab();
+  if (!tab) throw new Error('K-에듀파인 탭을 찾지 못했습니다. K-에듀파인에서 그 화면을 연 뒤 다시 눌러 주세요.');
+  const frames = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, world: 'MAIN', func: probeEdufineDatasets });
+  const lines = [`K-에듀파인 화면 자료 구조 (${new Date().toLocaleString('ko-KR')})`];
+  frames.forEach(({ result }) => lines.push(...(result || [])));
+  if (lines.length === 1) lines.push('(읽은 자료가 없습니다)');
+  return lines.join('\n');
+}
+
 async function buildNeisStructure() {
   const tabs = await chrome.tabs.query({});
   const neisTabs = tabs.filter((tab) => /neis/i.test(tab.url || '') || /나이스|NEIS/.test(tab.title || ''));
@@ -172,6 +213,19 @@ async function handleNeisStructure() {
   });
 }
 
+async function handleEdufineStructure() {
+  await withBusy($('edufineStructureBtn'), '점검 중…', async () => {
+    try {
+      $('diagnoseOut').value = await buildEdufineStructure();
+      $('diagnoseOut').hidden = false;
+      $('copyDiagnoseBtn').hidden = false;
+      showNotice($('diagnoseMsg'), 'ok', '점검을 마쳤습니다. [결과 복사]를 눌러 개발 담당자에게 전달해 주세요. 자료의 이름과 열 이름만 적었습니다.');
+    } catch (error) {
+      showNotice($('diagnoseMsg'), 'error', error.message);
+    }
+  });
+}
+
 async function handleDiagnose() {
   await withBusy($('diagnoseBtn'), '점검 중…', async () => {
     try {
@@ -196,4 +250,5 @@ async function handleCopyDiagnosis() {
 
 $('diagnoseBtn').addEventListener('click', handleDiagnose);
 $('neisStructureBtn').addEventListener('click', handleNeisStructure);
+$('edufineStructureBtn').addEventListener('click', handleEdufineStructure);
 $('copyDiagnoseBtn').addEventListener('click', handleCopyDiagnosis);

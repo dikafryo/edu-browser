@@ -230,9 +230,10 @@ launchctl setenv OLLAMA_HOST "0.0.0.0"</pre>
         <p id="saveMsg" class="notice" hidden></p>
 
         <h3>문제 진단</h3>
-        <p class="help">새 창(공문 열람 등)을 인식하지 못하거나 공문작성 도우미로 보내지지 않을 때, 그 창을 열어 둔 채 아래 버튼을 누르세요. 창·화면 구조와 도우미 연결 상태만 적으며 공문 내용은 읽지 않습니다. 나이스 상신 화면에서 결재선을 고르지 못하면 그 화면을 띄운 채 <b>NEIS 화면 구조 점검</b>을 누르세요.</p>
+        <p class="help">새 창(공문 열람 등)을 인식하지 못하거나 공문작성 도우미로 보내지지 않을 때, 그 창을 열어 둔 채 아래 버튼을 누르세요. 창·화면 구조와 도우미 연결 상태만 적으며 공문 내용은 읽지 않습니다. 나이스 상신 화면에서 결재선을 고르지 못하면 그 화면을 띄운 채 <b>NEIS 화면 구조 점검</b>을 누르세요. 공문작성 도우미가 크롬에서 나의 결재선·과제카드를 못 가져오면, 그 목록이 보이는 K-에듀파인 화면을 띄운 채 <b>K-에듀파인 화면 구조 점검</b>을 누르세요.</p>
         <button id="diagnoseBtn" class="btn btn-sub btn-small" type="button">새 창·도우미 연결 점검</button>
         <button id="neisStructureBtn" class="btn btn-sub btn-small" type="button">NEIS 화면 구조 점검</button>
+        <button id="edufineStructureBtn" class="btn btn-sub btn-small" type="button">K-에듀파인 화면 구조 점검</button>
         <p id="diagnoseMsg" class="notice" hidden></p>
         <label for="diagnoseOut" class="sr-only">점검 결과</label>
         <textarea id="diagnoseOut" rows="12" readonly hidden></textarea>

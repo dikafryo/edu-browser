@@ -159,6 +159,69 @@ function readEdufineCountsInPage() {
   }
 }
 
+/* K-에듀파인 화면에 받아 둔 자료(Nexacro 데이터셋)에서 나의 결재선·과제카드 이름만 모은다 (MAIN world 에서 실행).
+   과제카드는 공문 작성 창의 과제카드 선택 창과 같은 열 이름(tkcrdNm)을 쓴다.
+   문서 목록(제목 열이 있는 표)에도 문서마다 과제카드가 적혀 있어 남의 카드가 섞이므로 그런 표는 건너뛴다 */
+function readEdufineListsInPage() {
+  if (typeof nexacro === 'undefined' || !nexacro.getApplication) return null;
+  const LINE_COLUMN = /(reportCours|sanctnLine|aprvLine|atrzLine|apprLine)\w*Nm$/i;
+  const CARD_COLUMN = 'tkcrdNm';
+  const DOC_LIST_COLUMN = /^(docSj|sj|docNo|sjNm)$/i;
+  const found = { lines: [], cards: [] };
+  const seen = new Set();
+  const add = (list, value) => {
+    const name = String(value || '').trim();
+    if (name && !list.includes(name)) list.push(name);
+  };
+  const readDataset = (dataset) => {
+    const columns = Array.from({ length: dataset.getColCount() }, (_, index) => dataset.getColID(index));
+    if (columns.some((column) => DOC_LIST_COLUMN.test(column))) return;
+    const lineColumn = columns.find((column) => LINE_COLUMN.test(column));
+    const hasCards = columns.includes(CARD_COLUMN);
+    for (let row = 0; row < dataset.getRowCount(); row += 1) {
+      if (lineColumn) add(found.lines, dataset.getColumn(row, lineColumn));
+      if (hasCards) add(found.cards, dataset.getColumn(row, CARD_COLUMN));
+    }
+  };
+  const each = (collection, callback) => {
+    for (let index = 0; collection && index < collection.length; index += 1) callback(collection[index]);
+  };
+  const visit = (node, depth) => {
+    if (!node || typeof node !== 'object' || depth > 15 || seen.has(node)) return;
+    seen.add(node);
+    if (typeof node.getColID === 'function' && typeof node.getRowCount === 'function') {
+      readDataset(node);
+      return;
+    }
+    ['all', 'objects', 'components', 'frames'].forEach((key) => each(node[key], (child) => visit(child, depth + 1)));
+    ['form', 'frame', 'mainframe'].forEach((key) => visit(node[key], depth + 1));
+  };
+  try {
+    const app = nexacro.getApplication();
+    visit(app, 0);
+    // 프로그램 전체가 함께 쓰는 자료(gds…)는 Application 의 속성으로만 걸려 있다
+    Object.keys(app).forEach((key) => visit(app[key], 1));
+  } catch (error) {
+    // 화면이 바뀌는 중이면 그때까지 모은 것만 돌려준다
+  }
+  return found;
+}
+
+// 공문작성 도우미가 부탁하면 K-에듀파인 탭에서 이름 목록만 읽어 돌려준다(이 PC 안에서만 오간다)
+async function readEdufineLists() {
+  const tab = await findEdufineTab();
+  if (!tab) throw new Error('크롬에서 K-에듀파인 탭을 찾지 못했습니다. 업무포털에서 K-에듀파인을 연 뒤 다시 눌러 주세요.');
+  const frames = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, world: 'MAIN', func: readEdufineListsInPage });
+  const lists = { lines: [], cards: [] };
+  const merge = (list, names) => names.forEach((name) => { if (!list.includes(name)) list.push(name); });
+  frames.forEach(({ result }) => {
+    if (!result) return;
+    merge(lists.lines, result.lines);
+    merge(lists.cards, result.cards);
+  });
+  return lists;
+}
+
 async function findEdufineTab() {
   const site = SITES.find((item) => item.id === 'edufine');
   const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });

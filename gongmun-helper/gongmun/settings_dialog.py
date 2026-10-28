@@ -36,7 +36,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.appr_edit)
         layout.addWidget(self._help(
             "콜론(:) 앞 이름은 K-에듀파인 '나의 결재선' 이름과 똑같이 적습니다. "
-            "뒤의 사람 이름은 확인용이라 비워도 됩니다. 맨 위 줄이 기본입니다."))
+            "뒤의 사람 이름은 확인용이라 비워도 됩니다. 맨 위 줄이 기본입니다. "
+            "직접 적지 않아도 화면 ②의 [내 결재선·과제카드 가져오기]로 채울 수 있습니다."))
 
         layout.addWidget(QLabel("<b>과제카드 목록</b> — 한 줄에 하나 (과제카드명 | 관련 낱말)"))
         self.task_edit = QPlainTextEdit(settings.get("task_cards", ""))
@@ -45,7 +46,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.task_edit)
         layout.addWidget(self._help(
             "과제카드 선택 창에 나오는 단위과제카드 이름(대괄호 뒤 부분)으로 적습니다. "
-            "AI 가 초안을 만들 때 이 목록에서 알맞은 카드를 골라 둡니다."))
+            "AI 가 초안을 만들 때 이 목록에서 알맞은 카드를 골라 둡니다. "
+            "[가져오기]로 채운 뒤 | 뒤에 관련 낱말을 덧붙이면 다시 가져와도 남습니다."))
 
         layout.addWidget(QLabel("<b>AI</b> — 공문 초안을 누구에게 맡길까요?"))
         self.provider_group = QButtonGroup(self)

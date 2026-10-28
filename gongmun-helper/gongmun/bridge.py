@@ -4,6 +4,7 @@ K-에듀파인 공문 작성 창은 크롬 밖 프로그램이라 크롬 확장�
 그래서 PEN 브라우저는 공문 작성 요청을 같은 PC 의 공문작성 도우미로 넘기고, 입력은 도우미가 맡는다.
 거꾸로 도우미가 PenGPT 로 초안을 만들 때는 PenGPT 에 API 가 없으므로, 질문을 여기에 쌓아 두면
 PEN 브라우저 패널이 2초마다 가져가 열어 둔 PenGPT 탭에 대신 묻고 답을 돌려준다.
+같은 통로로 'K-에듀파인 탭에서 나의 결재선·과제카드 이름 읽기'도 맡긴다(작업 kind 로 구분).
 
 - 127.0.0.1 에서만 듣는다. 다른 PC 에서는 접속할 수 없다.
 - Origin 헤더가 PEN 브라우저 확장인 요청만 받는다. 웹사이트가 몰래 보낸 요청은 Origin 이
@@ -12,8 +13,10 @@ PEN 브라우저 패널이 2초마다 가져가 열어 둔 PenGPT 탭에 대신 
 
   GET  /ping       → {"ok": true, "app": "공문작성 도우미", "version": "..."}
   POST /gongmun    {"request": "..."} → {"ok": true}
-  POST /ai/next    {} → {"ok": true, "job": {"id", "system", "user"} 또는 null}
+  POST /ai/next    {} → {"ok": true, "job": {"id", "kind", ...} 또는 null}
+                   kind "pengpt": {"system", "user"} / kind "edufine_lists": 추가 값 없음
   POST /ai/result  {"id", "answer"} 또는 {"id", "error"} → {"ok": true}
+                   edufine_lists 의 answer 는 {"lines": [...], "cards": [...]} JSON 글자
 """
 import itertools
 import json
@@ -39,6 +42,8 @@ PANEL_ALIVE_SEC = 8
 PENGPT_TIMEOUT_SEC = 200
 PANEL_CLOSED = ("PEN 브라우저 패널이 열려 있지 않습니다. 크롬에서 PEN 브라우저 아이콘을 눌러 패널을 열어 두고 "
                 "(PenGPT 탭도 로그인해 열어 둔 채) 다시 눌러 주세요.")
+# 결재선·과제카드 이름 읽기는 화면만 훑으므로 금방 끝난다
+LISTS_TIMEOUT_SEC = 30
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -134,11 +139,10 @@ class _Server(ThreadingHTTPServer):
         self.server_name, self.server_port = self.server_address[:2]
 
 
-class _AiJob:
-    def __init__(self, job_id, system, user):
+class _PanelJob:
+    def __init__(self, job_id, fields):
         self.id = job_id
-        self.system = system
-        self.user = user
+        self.fields = fields  # 패널에 넘길 값 (kind 포함)
         self.taken = False
         self.answer = None
         self.error = None
@@ -186,7 +190,7 @@ class PenBridge(QObject):
             for job in self._jobs.values():
                 if not job.taken:
                     job.taken = True
-                    return {"id": job.id, "system": job.system, "user": job.user}
+                    return {"id": job.id, **job.fields}
         return None
 
     def finish_ai_job(self, job_id, answer, error):
@@ -198,14 +202,14 @@ class PenBridge(QObject):
         job.error = str(error) if error else None
         job.done.set()
 
-    def ask_pengpt(self, system, user, timeout=PENGPT_TIMEOUT_SEC):
-        """작업 스레드에서 부른다. PenGPT 답 글자를 돌려주고, 실패하면 한국어 메시지의 RuntimeError."""
+    def _ask_panel(self, fields, timeout, timeout_message, error_prefix=""):
+        """작업 스레드에서 부른다. 패널이 돌려준 답 글자. 실패하면 한국어 메시지의 RuntimeError."""
         if self._server is None:
             raise RuntimeError("PEN 브라우저와 연결 통로가 열려 있지 않습니다. 공문작성 도우미를 하나만 켜 두세요.")
         if not self.panel_alive():
             raise RuntimeError(PANEL_CLOSED)
         with self._lock:
-            job = _AiJob(next(self._job_ids), system, user)
+            job = _PanelJob(next(self._job_ids), fields)
             self._jobs[job.id] = job
         deadline = time.monotonic() + timeout
         try:
@@ -214,10 +218,26 @@ class PenBridge(QObject):
                 if not job.taken and not self.panel_alive():
                     raise RuntimeError(PANEL_CLOSED)
                 if time.monotonic() > deadline:
-                    raise RuntimeError("PenGPT 답이 3분 넘게 오지 않았습니다. PenGPT 탭을 확인한 뒤 다시 눌러 주세요.")
+                    raise RuntimeError(timeout_message)
         finally:
             with self._lock:
                 self._jobs.pop(job.id, None)
         if job.error:
-            raise RuntimeError(f"PenGPT 에 묻지 못했습니다: {job.error}")
+            raise RuntimeError(error_prefix + job.error)
         return job.answer
+
+    def ask_pengpt(self, system, user, timeout=PENGPT_TIMEOUT_SEC):
+        return self._ask_panel({"kind": "pengpt", "system": system, "user": user}, timeout,
+                               "PenGPT 답이 3분 넘게 오지 않았습니다. PenGPT 탭을 확인한 뒤 다시 눌러 주세요.",
+                               "PenGPT 에 묻지 못했습니다: ")
+
+    def ask_edufine_lists(self, timeout=LISTS_TIMEOUT_SEC):
+        """크롬 K-에듀파인 탭에서 읽은 {"lines": [결재선 이름], "cards": [과제카드 이름]}."""
+        answer = self._ask_panel({"kind": "edufine_lists"}, timeout,
+                                 "PEN 브라우저가 K-에듀파인 목록을 읽어 오지 못했습니다. 크롬의 K-에듀파인 탭을 확인해 주세요.")
+        try:
+            data = json.loads(answer)
+        except ValueError:
+            raise RuntimeError("PEN 브라우저가 보낸 목록을 읽지 못했습니다. PEN 브라우저를 새 판으로 고친 뒤 다시 눌러 주세요.") from None
+        clean = lambda values: [str(v).strip() for v in values or [] if str(v).strip()]
+        return {"lines": clean(data.get("lines")), "cards": clean(data.get("cards"))}
