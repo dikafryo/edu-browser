@@ -19,6 +19,8 @@ const PORTAL_OPEN_TIMEOUT_MS = 40000;
 const PORTAL_POPUP_WAIT_MS = 5000;
 
 const TAB_IDS = ['guide', 'neis', 'edufine', 'settings'];
+// 나이스 [승인요청] 뒤 상신 화면에서 고를 개인결재선을 복무 종류마다 정한다 (neis.js 의 neisLineKind 가 종류를 정함)
+const NEIS_LINE_KINDS = ['연가', '조퇴', '외출', '출장', '종일출장', '연수'];
 const PANEL_TAB_KEY = 'panelTab';
 
 const AI_PROVIDERS = ['ollama', 'pengpt'];
@@ -59,13 +61,28 @@ function withDefaults(saved = {}) {
   const savedAi = saved.ai || {};
   return {
     myDuties: saved.myDuties || '',
-    neis: { lineName: (saved.neis || {}).lineName || '', phone: (saved.neis || {}).phone || '' },
+    neis: neisDefaults(saved.neis),
     slots: { ...(saved.slots || {}) },
     ai: {
       provider: AI_PROVIDERS.includes(savedAi.provider) ? savedAi.provider : DEFAULT_AI.provider,
       ollamaUrl: savedAi.ollamaUrl || DEFAULT_AI.ollamaUrl,
       ollamaModel: savedAi.ollamaModel || DEFAULT_AI.ollamaModel,
     },
+  };
+}
+
+function uniqueNames(names) {
+  return names.map((name) => String(name || '').trim()).filter((name, index, all) => name && all.indexOf(name) === index);
+}
+
+// 예전 판은 결재선 하나(lineName)만 있었으므로 모든 종류에 그 결재선을 넣어 이어 쓴다
+function neisDefaults(saved = {}) {
+  const lines = {};
+  NEIS_LINE_KINDS.forEach((kind) => { lines[kind] = (saved.lines || {})[kind] || saved.lineName || ''; });
+  return {
+    phone: saved.phone || '',
+    lineNames: uniqueNames([...(saved.lineNames || []), ...Object.values(lines)]),
+    lines,
   };
 }
 
@@ -492,9 +509,36 @@ function renderAiSettings() {
   }
 }
 
+// 복무 종류마다 결재선 고르기 칸을 그린다. 지금 고른 값은 이름 목록이 바뀌어도 유지한다
+function renderNeisLineMap(names, chosen) {
+  const rows = NEIS_LINE_KINDS.flatMap((kind) => {
+    const label = document.createElement('label');
+    label.htmlFor = `neisLine-${kind}`;
+    label.textContent = kind;
+    const select = document.createElement('select');
+    select.id = `neisLine-${kind}`;
+    select.dataset.lineKind = kind;
+    const options = uniqueNames([...names, chosen[kind]]).map((name) => ({ value: name, text: name }));
+    fillSelect(select, [{ value: '', text: '(고르지 않음)' }, ...options], chosen[kind] || '');
+    return [label, select];
+  });
+  $('neisLineMap').replaceChildren(...rows);
+}
+
+function readNeisLineMap() {
+  const chosen = {};
+  $('neisLineMap').querySelectorAll('select').forEach((select) => { chosen[select.dataset.lineKind] = select.value; });
+  return chosen;
+}
+
+function readNeisLineNames() {
+  return uniqueNames($('neisLineNames').value.split('\n'));
+}
+
 function renderSettingsForm() {
   $('myDuties').value = settings.myDuties;
-  $('neisLineName').value = settings.neis.lineName;
+  $('neisLineNames').value = settings.neis.lineNames.join('\n');
+  renderNeisLineMap(settings.neis.lineNames, settings.neis.lines);
   $('neisPhone').value = settings.neis.phone;
   renderAiSettings();
 }
@@ -587,7 +631,8 @@ async function handleClearSlot(slotKey) {
 
 function readSettingsForm() {
   settings.myDuties = $('myDuties').value.trim();
-  settings.neis.lineName = $('neisLineName').value.trim();
+  settings.neis.lineNames = readNeisLineNames();
+  settings.neis.lines = readNeisLineMap();
   settings.neis.phone = $('neisPhone').value.trim();
   settings.ai.ollamaUrl = trimSlash($('ollamaUrl').value);
   settings.ai.ollamaModel = $('ollamaModel').value;
@@ -661,6 +706,7 @@ async function restoreTab() {
 
 function bindSettingsEvents() {
   $('saveSettingsBtn').addEventListener('click', handleSaveSettings);
+  $('neisLineNames').addEventListener('input', () => renderNeisLineMap(readNeisLineNames(), readNeisLineMap()));
   $('loadModelsBtn').addEventListener('click', handleLoadModels);
   $('testAiBtn').addEventListener('click', handleTestAi);
   document.querySelectorAll('input[name="aiProvider"]').forEach((radio) => {

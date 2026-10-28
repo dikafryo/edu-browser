@@ -50,6 +50,8 @@ const NEIS_FORMS = {
 // [승인요청] 뒤 중복 확인 창을 사용자가 읽고 고르는 시간까지 넉넉히 지켜본다
 const SUBMIT_WATCH_MS = 5 * 60 * 1000;
 const SUBMIT_POLL_MS = 1000;
+// 하루를 넘기거나 이 시간 이상인 출장은 '종일출장' 결재선을 쓴다
+const FULL_DAY_TRIP_HOURS = 7;
 
 /* ===================== 2. 데이터 처리 ===================== */
 function toNeisDate(value) {
@@ -75,6 +77,26 @@ function checkPeriod(input) {
   if (timeProblem) return timeProblem;
   if (`${input.fromDate} ${input.fromTime}` >= `${input.toDate} ${input.toTime}`) return '종료 일시가 시작 일시보다 뒤여야 합니다.';
   return '';
+}
+
+function hoursBetween(input) {
+  const start = new Date(`${input.fromDate}T${input.fromTime}`);
+  const end = new Date(`${input.toDate}T${input.toTime}`);
+  return (end - start) / 3600000;
+}
+
+/* 설정의 복무 종류별 결재선(NEIS_LINE_KINDS) 중 이 신청에 쓸 종류.
+   지각은 조퇴와 같은 짧은 복무로, 병가·공가·특별휴가 등 나머지 근무상황은 연가와 같은 결재로 본다 */
+function neisLineKind(input) {
+  if (input.kind === 'trip') {
+    if (input.tripKind === '출장(연수)') return '연수';
+    const fullDay = input.fromDate !== input.toDate || hoursBetween(input) >= FULL_DAY_TRIP_HOURS;
+    return fullDay ? '종일출장' : '출장';
+  }
+  if (input.major === '연수') return '연수';
+  if (/외출/.test(input.minor)) return '외출';
+  if (/조퇴|지각/.test(input.minor)) return '조퇴';
+  return '연가';
 }
 
 function buildLeaveJob(input) {
@@ -301,7 +323,7 @@ function neisPageSubmit(forms, preferKind) {
   apps.forEach((app) => { app.penSeenBeforeSubmit = true; });
   // 나이스가 확인 창을 띄우는 동안 이 함수가 묶이지 않도록 클릭은 다음 차례로 미룬다
   setTimeout(() => button.click(), 0);
-  return { ok: true, formId: forms[kind].form };
+  return { ok: true, kind, formId: forms[kind].form };
 }
 
 /* 나이스 화면 안(MAIN world)에서 실행된다. [승인요청] 뒤 새로 뜬 화면을 읽어 지금 어느 단계인지 알려 준다.
@@ -321,13 +343,18 @@ function neisPageWatch(formId, lineName) {
     if (control.getChildren) control.getChildren().forEach((child) => walk(child, depth + 1));
   };
   fresh.forEach((app) => walk(app.getContainer(), 0));
+  // 결재선 콤보의 이름들을 돌려주어 패널 설정의 결재선 목록을 저절로 채운다
+  const lineNames = found.combos.filter((combo) => /결재|Atrz|Line/i.test(`${combo.id} ${combo.fieldLabel || ''}`))
+    .flatMap((combo) => combo.getItems().map((it) => String(it.label).trim()))
+    .filter((label) => label && label !== '선택')
+    .slice(0, 20);
 
   const wanted = squash(lineName);
   for (const combo of wanted ? found.combos : []) {
     const item = combo.getItems().find((it) => squash(it.label) === wanted);
     if (!item) continue;
     if (combo.value !== item.value) combo.selectItemByValue(item.value);
-    return { state: 'ready' };
+    return { state: 'ready', lineNames };
   }
   for (const grid of wanted ? found.grids : []) {
     const dataSet = grid.dataSet;
@@ -336,16 +363,10 @@ function neisPageWatch(formId, lineName) {
       if (!columns.some((column) => squash(dataSet.getValue(row, column)) === wanted)) continue;
       if (grid.selectRows) grid.selectRows([row]);
       if (grid.focusCell) grid.focusCell(row, 0);
-      return { state: 'ready' };
+      return { state: 'ready', lineNames };
     }
   }
-  if (found.buttons.some((label) => squash(label).includes('상신'))) {
-    // 결재선 콤보의 이름들을 알려 주어 설정에 무엇을 적을지 알 수 있게 한다
-    const lineNames = found.combos.filter((combo) => /결재|Atrz|Line/i.test(`${combo.id} ${combo.fieldLabel || ''}`))
-      .flatMap((combo) => combo.getItems().map((it) => String(it.label).trim()))
-      .filter((label) => label && label !== '선택');
-    return { state: 'submit', lineNames: lineNames.slice(0, 20) };
-  }
+  if (found.buttons.some((label) => squash(label).includes('상신'))) return { state: 'submit', lineNames };
   // 글자도 버튼도 아직 없으면 다음 화면을 그리는 중이다
   if (found.texts.length === 0 && found.buttons.length === 0) return { state: 'waiting' };
   return { state: 'popup', texts: found.texts.filter(Boolean).slice(0, 12), buttons: found.buttons.slice(0, 8) };
@@ -501,14 +522,14 @@ function showSubmitStep(step) {
   renderInfoLines(lines);
 }
 
-function showSubmitEnd(step, lineName) {
+function showSubmitEnd(step, lineName, lineKind) {
   if (step.state === 'ready') {
-    showNotice($('neisMsg'), 'ok', `상신 화면에서 개인결재선 '${lineName}'을(를) 골라 두었습니다. 결재선을 확인한 뒤 나이스에서 직접 [상신]을 눌러 주세요.`);
+    showNotice($('neisMsg'), 'ok', `상신 화면에서 ${lineKind} 결재선 '${lineName}'을(를) 골라 두었습니다. 결재선을 확인한 뒤 나이스에서 직접 [상신]을 눌러 주세요.`);
     renderInfoLines([]);
   } else if (step.state === 'submit') {
     showNotice($('neisMsg'), 'warn', lineName
-      ? `상신 화면에서 개인결재선 '${lineName}'을(를) 찾지 못했습니다. 나이스에서 직접 고른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
-      : '상신 화면이 열렸습니다. 나이스에서 개인결재선을 고른 뒤 [상신]을 눌러 주세요. 설정에 결재선 이름을 적어 두면 다음부터 골라 둡니다.');
+      ? `상신 화면에서 ${lineKind} 결재선 '${lineName}'을(를) 찾지 못했습니다. 나이스에서 직접 고른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
+      : `상신 화면이 열렸습니다. 나이스에서 개인결재선을 고른 뒤 [상신]을 눌러 주세요. 설정 > 복무 종류별 결재선에서 '${lineKind}' 결재선을 골라 두면 다음부터 골라 둡니다.`);
     renderInfoLines(step.lineNames.length ? [`나이스의 결재선 목록: ${step.lineNames.join(' · ')}`] : []);
   } else if (step.state === 'closed') {
     showNotice($('neisMsg'), 'info', '신청 창이 닫혔습니다. 취소했다면 내용을 고쳐 다시 넣어 주세요.');
@@ -586,19 +607,33 @@ async function handleNeisFill() {
   });
 }
 
+// 상신 화면에서 읽은 나이스의 결재선 이름을 설정 목록에 더해 두어, 종류별 결재선을 고를 때 쓰게 한다
+async function learnLineNames(names) {
+  const merged = uniqueNames([...settings.neis.lineNames, ...(names || [])]);
+  if (merged.length === settings.neis.lineNames.length) return;
+  settings.neis.lineNames = merged;
+  await saveSettings();
+  $('neisLineNames').value = merged.join('\n');
+  renderNeisLineMap(merged, settings.neis.lines);
+}
+
 async function handleNeisSubmit() {
-  const preferKind = document.querySelector('input[name="neisKind"]:checked').value;
-  const { lineName } = settings.neis;
+  const input = readNeisInput();
   await withBusy($('neisSubmitBtn'), '진행 중…', async () => {
     $('neisFillBtn').disabled = true;
     try {
       const tab = await findNeisTab();
       if (!tab) throw new Error('나이스 창이 없습니다. 먼저 [나이스 신청 창에 넣기]를 눌러 내용을 채워 주세요.');
-      const started = await runInNeis(tab, neisPageSubmit, [NEIS_FORMS, preferKind]);
+      const started = await runInNeis(tab, neisPageSubmit, [NEIS_FORMS, input.kind]);
       if (!started.ok) throw new Error(started.problem);
+      // 패널에서 고른 종류와 열린 신청 창이 다르면 패널 내용으로 종류를 가릴 수 없어 기본 종류를 쓴다
+      const lineKind = started.kind === input.kind ? neisLineKind(input) : (started.kind === 'trip' ? '출장' : '연가');
+      const lineName = settings.neis.lines[lineKind] || '';
       await focusTab(tab);
       showSubmitStep({ state: 'waiting' });
-      showSubmitEnd(await watchSubmit(tab, started.formId, lineName, showSubmitStep), lineName);
+      const end = await watchSubmit(tab, started.formId, lineName, showSubmitStep);
+      showSubmitEnd(end, lineName, lineKind);
+      await learnLineNames(end.lineNames);
     } catch (error) {
       showNotice($('neisMsg'), 'error', error.message);
     } finally {

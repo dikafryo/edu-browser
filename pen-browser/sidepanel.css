@@ -208,3 +208,8 @@ main { padding: var(--space-3); }
 .slot-row .btn-small { margin: 0; }
 .slot-state { grid-column: 1 / -1; font-size: 12px; color: var(--color-text-sub); }
 .slot-state[data-done="true"] { color: var(--color-ok); }
+
+/* 나이스 복무 종류별 결재선: 왼쪽 종류 이름, 오른쪽 결재선 고르기 */
+.field-title { font-weight: 600; margin: var(--space-3) 0 var(--space-1); }
+.line-map { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-3); align-items: center; }
+.line-map label { margin: 0; font-size: 14px; }

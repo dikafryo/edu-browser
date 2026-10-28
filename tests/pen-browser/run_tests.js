@@ -137,7 +137,7 @@
 
   const started = neisPageSubmit(NEIS_FORMS, 'leave');
   await new Promise((r) => setTimeout(r, 20));
-  check('submit finds the open trip form', started.ok && started.formId === NEIS_FORMS.trip.form && submitted === 1, started);
+  check('submit finds the open trip form', started.ok && started.kind === 'trip' && started.formId === NEIS_FORMS.trip.form && submitted === 1, started);
   check('watch: nothing new yet', neisPageWatch(started.formId, '출장결재').state === 'waiting', null);
   const confirmApp = fakeApp('popup/dup', [fakeControl('output', 'o1', { value: '같은 기간에 신청한 출장이 있습니다.' }), fakeControl('button', 'b1', { value: '취소' }), fakeControl('button', 'b2', { value: '계속진행' })]);
   runningApps.push(confirmApp);
@@ -147,16 +147,37 @@
   let pickedLine = '';
   const lineCombo = fakeControl('combobox', 'cmbAtrzLine', { value: '', getItems: () => [{ label: '선택', value: '' }, { label: '기본 결재선', value: 'A' }, { label: '출장 결재', value: 'B' }], selectItemByValue: (v) => { pickedLine = v; } });
   runningApps.push(fakeApp('popup/atrz', [lineCombo, fakeControl('button', 'btnSubmit', { value: '상신' })]));
-  check('watch: line picked by name', neisPageWatch(started.formId, '출장결재').state === 'ready' && pickedLine === 'B', pickedLine);
+  const readyStep = neisPageWatch(started.formId, '출장결재');
+  check('watch: line picked by name', readyStep.state === 'ready' && pickedLine === 'B' && readyStep.lineNames.join('/') === '기본 결재선/출장 결재', [pickedLine, readyStep]);
   const noLine = neisPageWatch(started.formId, '없는 결재선');
   check('watch: line missing -> list names', noLine.state === 'submit' && noLine.lineNames.join('/') === '기본 결재선/출장 결재', noLine);
   runningApps.length = 0;
   check('watch: form closed', neisPageWatch(started.formId, '출장결재').state === 'closed', null);
   delete window.cpr;
 
-  $('neisLineName').value = ' 출장 결재 '; $('neisPhone').value = '010-0000-0000';
+  // 복무 종류별 결재선: 보통 조퇴·외출·출장 / 연가·종일출장 두 묶음
+  $('neisLineNames').value = ' 짧은 복무 \n하루 복무\n\n짧은 복무';
+  $('neisLineNames').dispatchEvent(new Event('input'));
+  check('line map has six kinds with names', $('neisLineMap').querySelectorAll('select').length === 6 && $('neisLine-조퇴').options.length === 3, $('neisLineMap').innerHTML.length);
+  ['조퇴', '외출', '출장'].forEach((kind) => { $(`neisLine-${kind}`).value = '짧은 복무'; });
+  ['연가', '종일출장'].forEach((kind) => { $(`neisLine-${kind}`).value = '하루 복무'; });
+  $('neisPhone').value = '010-0000-0000';
   readSettingsForm();
-  check('neis settings read', settings.neis.lineName === '출장 결재' && settings.neis.phone === '010-0000-0000', settings.neis);
+  check('neis settings read', settings.neis.lineNames.join('/') === '짧은 복무/하루 복무' && settings.neis.lines['외출'] === '짧은 복무'
+    && settings.neis.lines['종일출장'] === '하루 복무' && settings.neis.lines['연수'] === '' && settings.neis.phone === '010-0000-0000', settings.neis);
+  check('old single line setting carries over', neisDefaults({ lineName: '예전 결재선' }).lines['연수'] === '예전 결재선', null);
+  const day = { kind: 'leave', fromDate: '2026-12-30', toDate: '2026-12-30', fromTime: '09:00', toTime: '18:00' };
+  const kindOf = (extra) => neisLineKind({ ...day, ...extra });
+  check('line kind by request', [
+    kindOf({ major: '연가', minor: '연가' }) === '연가', kindOf({ major: '연가', minor: '반일연가' }) === '연가',
+    kindOf({ major: '연가', minor: '조퇴' }) === '조퇴', kindOf({ major: '병가', minor: '병지각' }) === '조퇴',
+    kindOf({ major: '연가', minor: '외출' }) === '외출', kindOf({ major: '병가', minor: '병가' }) === '연가',
+    kindOf({ major: '연수', minor: '교육공무원법제41조연수' }) === '연수',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', fromTime: '14:00', toTime: '17:00' }) === '출장',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관외)' }) === '종일출장',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', toDate: '2026-12-31', fromTime: '15:00', toTime: '10:00' }) === '종일출장',
+    kindOf({ kind: 'trip', tripKind: '출장(연수)' }) === '연수',
+  ].every(Boolean), null);
   check('open-only button replaced', !document.getElementById('openNeisBtn') && $('neisSubmitBtn').textContent === '승인요청', null);
 
   // 14. 도우미 부탁으로 K-에듀파인 나의 결재선·과제카드 읽기 (가짜 Nexacro)
