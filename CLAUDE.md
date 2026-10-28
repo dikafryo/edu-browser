@@ -31,7 +31,7 @@ python -m gongmun
 
 ```powershell
 cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기·결재선/과제카드 가져오기(29개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능 63개(headless 크롬, 가짜 chrome API)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 74개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -78,8 +78,12 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 - 화면 = 앱 인스턴스: `cpr.core.Platform.INSTANCE.getAllRunningAppInstances()` → `app.app.id`, 컨트롤은 `app.lookup('id')`
 - 근무상황: 목록 `edu/ga/srv/mym/mm/srv_mymmm00_m00`(버튼 `btnAply`) → 신청 창 `..._p00`. 칸: `cmbWorkSittnLclfCd`(대분류) → `cmbWorkSittnSclfCd`(소분류) → `cmbWorkSittnDtlCd`(상세), `cmbAvRsnCd`(연가사유), `dtiWorkYmdFrom/To`, `cmbBgngH/M`, `cmbEndH/M`, `ipbWorkSittnRsnCn`(사유), `ipbDestiNm`(목적지), `btnAprvDmnd`(승인요청), `btnCancel`
 - 출장: 목록 `edu/ga/srv/mym/mm/srv_mymmm03_m00` → 신청 창 `..._p00`. 칸: `cmbBsrpScCd`(출장종류), 기간은 표 안 편집칸 `dti1`/`dti2`·`cmb10`/`cmb2`(시작 시·분)/`cmb3`/`cmb4`(종료), `ipbDobtNm`(출장지), `ipbBsrpCn`(목적), `ipbMvmnMteCn`(이동사항), `cbxOfflVhcUtilzYn`(공용차량), `cbxTvctPyrfYn`(여비 없음), `btnAply`(승인요청). 출장자 표 시간은 기간과 자동으로 맞춰진다(`sameBsrpPriodYn=Y`)
-- **비상연락처**: 기간 표(`grdMain`)와 출장자 표(`grdTgpr`)의 데이터셋에 `emgCnctTelno` 가 따로 있다. 나이스가 처음 채운 번호가 패널로 채우는 동안 한쪽에서 비면 승인요청 때 전화번호 필수 안내로 막힌다 → 채우기 전 번호를 기억했다가 빈 칸에 다시 넣고, 나이스에도 없을 때만 패널 설정의 번호를 쓴다
-- **승인요청 흐름** (`neisPageSubmit` → `neisPageWatch`): 누르기 전 떠 있는 앱 인스턴스마다 `penSeenBeforeSubmit` 표시를 남기고, 그 뒤 새로 뜬 앱만 읽는다. 결재선명과 글자가 같은 콤보 항목(또는 표의 행)이 있으면 고르고 멈춘다. `상신` 버튼이 있는데 못 찾으면 결재선 목록을 알려 준다. 그 밖의 새 창(중복 확인 등)은 글자·버튼을 패널에 보여 주고 사용자가 고르기를 기다린다(창이 사라지고 3초간 조용하면 취소로 본다). 결재선은 복무 종류(`NEIS_LINE_KINDS`: 연가·조퇴·외출·출장·종일출장·연수)마다 설정에서 고르고 `neisLineKind` 가 신청 내용으로 종류를 정한다(지각→조퇴, 병가·공가·특별휴가→연가, 하루를 넘기거나 7시간 이상 출장→종일출장, 출장(연수)·연수 대분류→연수). 결재선 이름 목록은 설정의 [나이스에서 결재선 가져오기](상신함 > 개인결재선 등록 화면을 열어 표에서 결재선명 열을 고름, `neisPageReadLines`)나 상신 화면에서 읽어 더한다(`learnLineNames`). 2026. 10. 28. 실제로 2개 읽음 — 이름 열을 못 고르면 오류 안내에 표 구조(열 이름)가 함께 나온다. 예전 판의 단일 `lineName` 은 모든 종류로 옮긴다(`neisDefaults`). 중복 확인·상신 화면의 앱 id 는 아직 직접 확인하지 못해 글자로 찾는다 — 어긋나면 상신 화면을 띄운 채 설정 > **NEIS 화면 구조 점검**(eXBuilder 칸·버튼·콤보 선택지·표 열 이름만 적음)으로 구조를 받아 고칠 것
+- **비상연락처**: 기간 표(`grdMain`)와 출장자 표(`grdTgpr`)의 데이터셋에 `emgCnctTelno` 가 따로 있다. 나이스가 처음 채운 번호가 패널로 채우는 동안 한쪽에서 비면 승인요청 때 전화번호 필수 안내로 막힌다 → 채우기 전 번호를 기억했다가 빈 칸에 다시 넣고, 나이스에도 없을 때만 패널 설정의 번호를 쓴다. 근무상황 신청 창은 `grdMain`(=`dsMain`)에 같은 칸(입력틀 `(000)0000-0000`)이 있고, 교원(`srvPsnScCd=1`)이면 나이스가 일부러 비워 둔다(필수 아님) → 설정 번호가 있으면 넣고 없으면 오류 없이 넘어간다. 설정 번호는 숫자만 넣는다(두 창 모두 입력틀이 숫자 자리뿐)
+- **승인요청 흐름** (`neisPageSubmit` → `watchSubmit`/`neisPageWatch`): 누르기 전 떠 있는 앱 인스턴스마다 `penSeenBeforeSubmit` 표시를 남기고, 그 뒤 새로 뜬 앱만 읽는다. 나이스 화면 소스(`https://pen.neis.go.kr/ui/<앱 id>.clx.js`, 로그인 없이 받아짐 — 공통 모듈은 `ui/cpr-lib/user-modules.js`)로 확인한 순서:
+  1. 승인요청 → 같은 기간 신청이 있으면 확인 창(`confirmDlg`, GA-SRV-0121) → 저장 → `doOpenDrft` 가 기안(상신) 창 `edu/cm/wam/woa/pm/wam_woapm07_p00` 을 연다(닫히면 신청 창도 닫힘). 확인 창은 글자·버튼을 패널에 보여 주고 사용자가 고르기를 기다린다(창이 사라지고 `CANCEL_QUIET_POLLS`초 새 화면이 없으면 취소로 본다 — 저장·기안 창 불러오기보다 길게)
+  2. 기안 창의 `btnSelectMySancr`([개인결재선]) → 고르기 창 `wam_woapm07_p02`: 왼쪽 `grd3`(`snclnNm`)에서 행을 `selectRows(row)` 하고 `btnSearch` 를 눌러야 결재자 표 `grd2` 가 채워진다 → `btn4`([지정])를 누르면 창이 닫히며 기안 창의 `dsSancr` 에 들어간다. `btnDrft`([상신])는 누르지 않는다
+  3. `neisPageWatch` 는 1초마다 불려 한 번에 한 단계만 하고, 진행 상태는 앱 객체(`penLineOpened`·`penPickedRow`·`penLineDone` 등)에 남긴다. 이름이 없으면 고르기 창을 열어 둔 채 사용자에게 맡긴다. 앱 id·칸 이름은 `NEIS_DRAFT` 한곳에 있다. 2026. 10. 28. 고르기 창을 따로 띄워 고르기 → 조회 → 결재자 2명 → [지정] 버튼 존재까지 실제 확인(지정 대신 닫기), 기안 창 전체 흐름은 실제 승인요청이 필요해 미확인
+  결재선은 복무 종류(`NEIS_LINE_KINDS`: 연가·조퇴·외출·출장·종일출장·연수)마다 설정에서 고르고 `neisLineKind` 가 신청 내용으로 종류를 정한다(지각→조퇴, 병가·공가·특별휴가→연가, 하루를 넘기거나 7시간 이상 출장→종일출장, 출장(연수)·연수 대분류→연수). 결재선 이름 목록은 설정의 [나이스에서 결재선 가져오기](상신함 > 개인결재선 등록 화면을 열어 표에서 결재선명 열을 고름, `neisPageReadLines`)나 고르기 창에서 읽어 더한다(`learnLineNames`). 예전 판의 단일 `lineName` 은 모든 종류로 옮긴다(`neisDefaults`)
 - **콤보는 `selectItemByValue`** 로 골라야 화면의 연결 동작(소분류 갱신·신청시간 계산)이 돈다. `.value =` 는 이벤트가 없다. 날짜·글자는 `putValue`
 - **신청 창이 처음 자료를 다 받기 전에 넣으면 기본값(오늘 09:00)으로 덮어쓴다.** 대분류/출장종류 콤보에 항목이 차고 `grdMain` 에 행이 생긴 뒤 1.2초 더 기다린다. 끝나면 모든 칸을 다시 읽어 되돌려진 칸은 실패로 알린다
 - 출장 기간을 데이터셋(`dataSet.setValue`)에 바로 쓰면 날짜는 바뀌어도 신청시간이 다시 계산되지 않는다 → 편집칸 컨트롤로 넣는다

@@ -50,6 +50,17 @@ const NEIS_FORMS = {
 // [승인요청] 뒤 중복 확인 창을 사용자가 읽고 고르는 시간까지 넉넉히 지켜본다
 const SUBMIT_WATCH_MS = 5 * 60 * 1000;
 const SUBMIT_POLL_MS = 1000;
+/* [승인요청] 뒤 나이스가 여는 기안(상신) 창과, 그 창의 [개인결재선] 버튼이 여는 결재선 고르기 창.
+   고르기 창은 왼쪽 표(grd3)에서 결재선을 고르고 [조회]로 결재자 표(grd2)를 받은 뒤 [지정](btn4)을 눌러야
+   기안 창의 결재자 목록(dsSancr)에 들어간다. 이름·순서는 나이스 화면 소스(wam_woapm07_p00·p02)에서 확인했다 */
+const NEIS_DRAFT = {
+  app: 'edu/cm/wam/woa/pm/wam_woapm07_p00', lineButton: 'btnSelectMySancr', sancrList: 'dsSancr',
+  picker: 'edu/cm/wam/woa/pm/wam_woapm07_p02', lineGrid: 'grd3', nameColumn: 'snclnNm',
+  search: 'btnSearch', memberGrid: 'grd2', confirm: 'btn4',
+  maxPolls: 15,  // 고르기 창이 뜨거나 결재자 표를 받기를 기다리는 최대 횟수(지켜보기 1번 = 1초)
+};
+// 확인 창이 사라진 뒤 이만큼(초) 새 화면이 없으면 사용자가 [취소]를 고른 것으로 본다. 저장·기안 창 불러오기 시간보다 길게
+const CANCEL_QUIET_POLLS = 8;
 // 하루를 넘기거나 이 시간 이상인 출장은 '종일출장' 결재선을 쓴다
 const FULL_DAY_TRIP_HOURS = 7;
 // 나이스 상신함 > 개인결재선 등록 메뉴 (글자가 이것으로 시작하는 왼쪽 메뉴 링크)
@@ -106,6 +117,7 @@ function buildLeaveJob(input) {
   const to = splitTime(input.toTime);
   return {
     kind: 'leave',
+    phone: input.phone,
     steps: [
       { type: 'combo', id: 'cmbWorkSittnLclfCd', label: input.major, name: '근무상황 대분류', wait: 900 },
       { type: 'combo', id: 'cmbWorkSittnSclfCd', label: input.minor, name: '근무상황 소분류', wait: 900 },
@@ -233,7 +245,10 @@ async function neisPageRun(job) {
 
   /* 출장 신청 창은 기간 표(grdMain)와 출장자 표(grdTgpr)에 비상연락처(emgCnctTelno)가 따로 있다.
      기간을 바꾸는 동안 나이스가 채워 둔 번호가 한쪽에서 비면 승인요청 때 '전화번호 필수'로 막히므로,
-     채우기 전 번호를 기억해 두었다가 빈 칸에 다시 넣는다. 나이스에도 번호가 없을 때만 설정의 번호를 쓴다 */
+     채우기 전 번호를 기억해 두었다가 빈 칸에 다시 넣는다. 나이스에도 번호가 없을 때만 설정의 번호를 쓴다.
+     근무상황 신청 창은 grdMain(dsMain)에 같은 칸이 있는데, 교원이면 나이스가 일부러 비워 둔다.
+     거기는 필수가 아니므로 넣을 번호가 없으면 조용히 넘어간다.
+     칸의 입력 틀이 숫자 자리뿐이라((000)0000-0000 등) 설정의 번호는 숫자만 넣는다 */
   const phoneCells = () => {
     const cells = [];
     ['grdMain', 'grdTgpr'].forEach((gridId) => {
@@ -251,7 +266,8 @@ async function neisPageRun(job) {
     const cells = phoneCells();
     const empty = cells.filter((cell) => !cell.value);
     if (empty.length === 0) return null;
-    const phone = firstPhone(cells) || savedPhone || job.phone;
+    const phone = firstPhone(cells) || savedPhone || String(job.phone || '').replace(/\D/g, '');
+    if (!phone && job.kind !== 'trip') return null;
     if (!phone) return { name: '비상연락처', ok: false, problem: '나이스에 등록된 번호가 없습니다. 설정에 비상연락처를 적거나 나이스에서 직접 적어 주세요.' };
     empty.forEach(({ dataSet, row }) => dataSet.setValue(row, 'emgCnctTelno', phone));
     return { name: '비상연락처: 비어 있던 칸에 넣음', ok: true };
@@ -329,46 +345,91 @@ function neisPageSubmit(forms, preferKind) {
 }
 
 /* 나이스 화면 안(MAIN world)에서 실행된다. [승인요청] 뒤 새로 뜬 화면을 읽어 지금 어느 단계인지 알려 준다.
-   개인결재선 목록(콤보 또는 표)에 설정의 결재선명이 있으면 골라 둔다. [상신]은 누르지 않는다 */
-function neisPageWatch(formId, lineName) {
+   기안(상신) 창이 뜨면 [개인결재선] → 결재선 고르기 → [조회] → [지정]을 한 단계씩 진행한다.
+   한 번 부를 때 한 단계만 하고, 어디까지 했는지는 나이스 화면(앱) 객체에 표시해 두어 다음 부를 때 이어 간다.
+   [상신]은 누르지 않는다 */
+function neisPageWatch(formId, lineName, draft) {
   const squash = (text) => String(text || '').replace(/\s+/g, '');
   const apps = cpr.core.Platform.INSTANCE.getAllRunningAppInstances();
   const fresh = apps.filter((app) => !app.penSeenBeforeSubmit);
   if (fresh.length === 0) return { state: apps.some((app) => app.app.id === formId) ? 'waiting' : 'closed' };
-  const found = { texts: [], buttons: [], combos: [], grids: [] };
+  const freshApp = (id) => fresh.filter((app) => app.app.id === id).pop() || null;
+  const wanted = squash(lineName);
+
+  // 결재선 고르기 창: 목록을 받으면 이름으로 고르고 [조회], 결재자 표를 받으면 [지정]
+  const pickInPicker = (draftApp, picker) => {
+    draftApp.penPickerSeen = true;
+    const lineGrid = picker.lookup(draft.lineGrid);
+    const list = lineGrid && lineGrid.dataSet;
+    if (!list || list.getRowCount() === 0) return { state: 'choosing' };
+    const lineNames = [];
+    for (let row = 0; row < list.getRowCount(); row += 1) lineNames.push(String(list.getValue(row, draft.nameColumn) || '').trim());
+    draftApp.penLineNames = lineNames.filter(Boolean);
+    if (draftApp.penLineDone) return { state: draftApp.penLinePicked ? 'choosing' : 'submit', lineNames: draftApp.penLineNames };
+    if (picker.penPickedRow === undefined) {
+      const row = lineNames.findIndex((name) => squash(name) === wanted);
+      if (row < 0) {
+        draftApp.penLineDone = true;  // 고르기 창은 열어 두어 사용자가 직접 고르게 한다
+        return { state: 'submit', lineNames: draftApp.penLineNames };
+      }
+      lineGrid.selectRows(row);
+      picker.penPickedRow = row;
+      picker.penWaitPolls = 0;
+      picker.lookup(draft.search).click();
+      return { state: 'choosing', lineNames: draftApp.penLineNames };
+    }
+    const members = picker.lookup(draft.memberGrid);
+    if (!members || !members.dataSet || members.dataSet.getRowCount() === 0) {
+      picker.penWaitPolls += 1;
+      if (picker.penWaitPolls > draft.maxPolls) draftApp.penLineDone = true;
+      return { state: draftApp.penLineDone ? 'submit' : 'choosing', lineNames: draftApp.penLineNames };
+    }
+    draftApp.penLineDone = true;
+    draftApp.penLinePicked = true;
+    picker.lookup(draft.confirm).click();
+    return { state: 'choosing', lineNames: draftApp.penLineNames };
+  };
+
+  // 기안 창: 처음 한 번은 자료를 받도록 기다렸다가 [개인결재선]을 누르고, 고르기 창이 닫히면 결과를 본다
+  const pickInDraft = (draftApp) => {
+    const picker = freshApp(draft.picker);
+    if (picker) return pickInPicker(draftApp, picker);
+    const lineNames = draftApp.penLineNames || [];
+    if (draftApp.penLineDone) {
+      const sancrs = draftApp.lookup(draft.sancrList);
+      const filled = draftApp.penLinePicked && sancrs && sancrs.getRowCount() > 0;
+      return { state: filled ? 'ready' : 'submit', lineNames };
+    }
+    if (!wanted) return { state: 'submit', lineNames };
+    if (draftApp.penLineOpened) {
+      // 고르기 창이 떴다가 닫혔으면 사용자가 닫은 것이다. 아직 안 떴으면 조금 더 기다린다
+      draftApp.penOpenPolls += 1;
+      const gaveUp = draftApp.penPickerSeen || draftApp.penOpenPolls > draft.maxPolls;
+      return { state: gaveUp ? 'submit' : 'choosing', lineNames };
+    }
+    const button = draftApp.lookup(draft.lineButton);
+    if (!draftApp.penDraftSeen || !button || button.enabled === false) {
+      draftApp.penDraftSeen = true;
+      return { state: 'choosing' };
+    }
+    draftApp.penLineOpened = true;
+    draftApp.penOpenPolls = 0;
+    button.click();
+    return { state: 'choosing' };
+  };
+
+  const draftApp = freshApp(draft.app);
+  if (draftApp) return pickInDraft(draftApp);
+
+  // 기안 창 전에 뜬 화면(중복 확인 등)은 글자와 버튼을 모아 사용자에게 보여 준다
+  const found = { texts: [], buttons: [] };
   const walk = (control, depth) => {
     if (!control || depth > 14) return;
     if (control.type === 'output' && control.value) found.texts.push(String(control.value).trim().slice(0, 200));
     if (control.type === 'button' && control.value) found.buttons.push(String(control.value).trim());
-    if (control.type === 'combobox' && control.getItems) found.combos.push(control);
-    if (control.type === 'grid' && control.dataSet) found.grids.push(control);
     if (control.getChildren) control.getChildren().forEach((child) => walk(child, depth + 1));
   };
   fresh.forEach((app) => walk(app.getContainer(), 0));
-  // 결재선 콤보의 이름들을 돌려주어 패널 설정의 결재선 목록을 저절로 채운다
-  const lineNames = found.combos.filter((combo) => /결재|Atrz|Line/i.test(`${combo.id} ${combo.fieldLabel || ''}`))
-    .flatMap((combo) => combo.getItems().map((it) => String(it.label).trim()))
-    .filter((label) => label && label !== '선택')
-    .slice(0, 20);
-
-  const wanted = squash(lineName);
-  for (const combo of wanted ? found.combos : []) {
-    const item = combo.getItems().find((it) => squash(it.label) === wanted);
-    if (!item) continue;
-    if (combo.value !== item.value) combo.selectItemByValue(item.value);
-    return { state: 'ready', lineNames };
-  }
-  for (const grid of wanted ? found.grids : []) {
-    const dataSet = grid.dataSet;
-    const columns = dataSet.getColumnNames();
-    for (let row = 0; row < dataSet.getRowCount(); row += 1) {
-      if (!columns.some((column) => squash(dataSet.getValue(row, column)) === wanted)) continue;
-      if (grid.selectRows) grid.selectRows([row]);
-      if (grid.focusCell) grid.focusCell(row, 0);
-      return { state: 'ready', lineNames };
-    }
-  }
-  if (found.buttons.some((label) => squash(label).includes('상신'))) return { state: 'submit', lineNames };
   // 글자도 버튼도 아직 없으면 다음 화면을 그리는 중이다
   if (found.texts.length === 0 && found.buttons.length === 0) return { state: 'waiting' };
   return { state: 'popup', texts: found.texts.filter(Boolean).slice(0, 12), buttons: found.buttons.slice(0, 8) };
@@ -476,18 +537,17 @@ async function runNeisJob(job) {
 }
 
 // 승인요청을 누른 뒤 상신 화면에서 결재선을 고를 때까지(또는 창이 닫힐 때까지) 지켜보며 단계마다 onStep 으로 알린다
-// 확인 창이 사라진 뒤 신청 창만 남아 있으면(3초) 사용자가 [취소]를 고른 것으로 본다
 async function watchSubmit(tab, formId, lineName, onStep) {
   let sawPopup = false;
   let quietPolls = 0;
   for (let waited = 0; waited < SUBMIT_WATCH_MS; waited += SUBMIT_POLL_MS) {
     await sleep(SUBMIT_POLL_MS);
-    const step = await runInNeis(tab, neisPageWatch, [formId, lineName]);
+    const step = await runInNeis(tab, neisPageWatch, [formId, lineName, NEIS_DRAFT]);
     if (['ready', 'submit', 'closed'].includes(step.state)) return step;
     sawPopup = sawPopup || step.state === 'popup';
     quietPolls = step.state === 'waiting' ? quietPolls + 1 : 0;
-    if (sawPopup && quietPolls >= 3) return { state: 'cancelled' };
-    if (step.state === 'popup') onStep(step);
+    if (sawPopup && quietPolls >= CANCEL_QUIET_POLLS) return { state: 'cancelled' };
+    if (step.state !== 'waiting') onStep(step);
   }
   return { state: 'timeout' };
 }
@@ -561,6 +621,11 @@ function showSubmitStep(step) {
     showNotice($('neisMsg'), 'info', '승인요청을 눌렀습니다. 나이스가 다음 화면을 여는 중입니다…');
     return;
   }
+  if (step.state === 'choosing') {
+    showNotice($('neisMsg'), 'info', '상신 화면에서 [개인결재선]을 눌러 결재선을 고르는 중입니다. 나이스 화면을 건드리지 말고 기다려 주세요…');
+    renderInfoLines([]);
+    return;
+  }
   showNotice($('neisMsg'), 'warn', '나이스에 확인 창이 떴습니다. 내용을 읽고 나이스 화면에서 [취소] 또는 [계속 진행]을 골라 주세요. 계속 진행하면 상신 화면에서 결재선을 골라 둡니다.');
   const lines = step.texts.map((text) => `나이스 안내: ${text}`);
   if (step.buttons.length) lines.push(`나이스 화면의 버튼: ${step.buttons.join(' · ')}`);
@@ -569,12 +634,12 @@ function showSubmitStep(step) {
 
 function showSubmitEnd(step, lineName, lineKind) {
   if (step.state === 'ready') {
-    showNotice($('neisMsg'), 'ok', `상신 화면에서 ${lineKind} 결재선 '${lineName}'을(를) 골라 두었습니다. 결재선을 확인한 뒤 나이스에서 직접 [상신]을 눌러 주세요.`);
+    showNotice($('neisMsg'), 'ok', `상신 화면에 ${lineKind} 결재선 '${lineName}'을(를) 지정해 두었습니다. 결재자를 확인한 뒤 나이스에서 직접 [상신]을 눌러 주세요.`);
     renderInfoLines([]);
   } else if (step.state === 'submit') {
     showNotice($('neisMsg'), 'warn', lineName
-      ? `상신 화면에서 ${lineKind} 결재선 '${lineName}'을(를) 찾지 못했습니다. 나이스에서 직접 고른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
-      : `상신 화면이 열렸습니다. 나이스에서 개인결재선을 고른 뒤 [상신]을 눌러 주세요. 설정 > 복무 종류별 결재선에서 '${lineKind}' 결재선을 골라 두면 다음부터 골라 둡니다.`);
+      ? `${lineKind} 결재선 '${lineName}'을(를) 지정하지 못했습니다. 나이스 상신 화면의 [개인결재선]에서 결재선을 고르고 [지정]을 누른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
+      : `상신 화면이 열렸습니다. [개인결재선]에서 결재선을 고르고 [지정]을 누른 뒤 [상신]을 눌러 주세요. 설정 > 복무 종류별 결재선에서 '${lineKind}' 결재선을 골라 두면 다음부터 지정해 둡니다.`);
     renderInfoLines(step.lineNames.length ? [`나이스의 결재선 목록: ${step.lineNames.join(' · ')}`] : []);
   } else if (step.state === 'closed') {
     showNotice($('neisMsg'), 'info', '신청 창이 닫혔습니다. 취소했다면 내용을 고쳐 다시 넣어 주세요.');

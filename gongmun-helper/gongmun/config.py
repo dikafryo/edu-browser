@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-VERSION = "26.1028.7"
+VERSION = "26.1028.8"
 APP_NAME = f"공문작성 도우미 v{VERSION}"
 
 # PEN 브라우저(크롬 확장) 연결 — bridge.py.

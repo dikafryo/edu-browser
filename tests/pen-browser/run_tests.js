@@ -133,26 +133,89 @@
   check('empty traveller phone filled from NEIS number', phoneRun.ok && travellerRows[0].emgCnctTelno === '010-1111-2222' && phoneRun.results.some((r) => r.ok && /비상연락처/.test(r.name)), phoneRun);
   tripRows[0].emgCnctTelno = ''; travellerRows[0].emgCnctTelno = '';
   await neisPageRun({ kind: 'trip', phone: '010-3333-4444', steps: [] });
-  check('no NEIS number -> settings phone', tripRows[0].emgCnctTelno === '010-3333-4444' && travellerRows[0].emgCnctTelno === '010-3333-4444', [tripRows, travellerRows]);
+  check('no NEIS number -> settings phone (digits)', tripRows[0].emgCnctTelno === '01033334444' && travellerRows[0].emgCnctTelno === '01033334444', [tripRows, travellerRows]);
+  tripRows[0].emgCnctTelno = ''; travellerRows[0].emgCnctTelno = '';
+  const tripNoPhone = await neisPageRun({ kind: 'trip', phone: '', steps: [] });
+  check('trip without any phone -> problem', tripNoPhone.results.some((r) => !r.ok && /비상연락처/.test(r.name)), tripNoPhone);
+  runningApps.splice(runningApps.indexOf(tripForm), 1);
+
+  // 근무상황 신청 창: 교원이면 나이스가 연락처를 비워 둔다. 설정 번호가 있으면 넣고, 없으면 조용히 넘어간다
+  const leaveRows = [{ emgCnctTelno: null }];
+  const leaveForm = fakeApp(NEIS_FORMS.leave.form, [
+    fakeControl('combobox', 'cmbWorkSittnLclfCd', { getItems: () => [{ label: '선택', value: '' }, { label: '연가', value: '1' }] }),
+    fakeControl('grid', 'grdMain', { dataSet: fakeDataSet(['workSittnSn', 'emgCnctTelno'], leaveRows) }),
+  ]);
+  runningApps.push(leaveForm);
+  const leaveRun = await neisPageRun({ kind: 'leave', phone: '010-5555-6666', steps: [] });
+  check('leave phone filled from settings', leaveRun.ok && leaveRows[0].emgCnctTelno === '01055556666' && leaveRun.results.every((r) => r.ok), leaveRun);
+  leaveRows[0].emgCnctTelno = null;
+  const leaveQuiet = await neisPageRun({ kind: 'leave', phone: '', steps: [] });
+  check('leave without phone -> no problem', leaveQuiet.ok && leaveQuiet.results.length === 0, leaveQuiet);
+  check('leave job carries phone', buildLeaveJob({ ...readNeisInput(), phone: '010-1' }).phone === '010-1', null);
+  runningApps.splice(runningApps.indexOf(leaveForm), 1);
+  runningApps.push(tripForm);
 
   const started = neisPageSubmit(NEIS_FORMS, 'leave');
   await new Promise((r) => setTimeout(r, 20));
   check('submit finds the open trip form', started.ok && started.kind === 'trip' && started.formId === NEIS_FORMS.trip.form && submitted === 1, started);
-  check('watch: nothing new yet', neisPageWatch(started.formId, '출장결재').state === 'waiting', null);
+  const watch = (lineName) => neisPageWatch(started.formId, lineName, NEIS_DRAFT);
+  check('watch: nothing new yet', watch('관').state === 'waiting', null);
   const confirmApp = fakeApp('popup/dup', [fakeControl('output', 'o1', { value: '같은 기간에 신청한 출장이 있습니다.' }), fakeControl('button', 'b1', { value: '취소' }), fakeControl('button', 'b2', { value: '계속진행' })]);
   runningApps.push(confirmApp);
-  const dupStep = neisPageWatch(started.formId, '출장결재');
+  const dupStep = watch('관');
   check('watch: duplicate check popup', dupStep.state === 'popup' && dupStep.texts[0].includes('같은 기간') && dupStep.buttons.includes('계속진행'), dupStep);
   runningApps.splice(runningApps.indexOf(confirmApp), 1);
-  let pickedLine = '';
-  const lineCombo = fakeControl('combobox', 'cmbAtrzLine', { value: '', getItems: () => [{ label: '선택', value: '' }, { label: '기본 결재선', value: 'A' }, { label: '출장 결재', value: 'B' }], selectItemByValue: (v) => { pickedLine = v; } });
-  runningApps.push(fakeApp('popup/atrz', [lineCombo, fakeControl('button', 'btnSubmit', { value: '상신' })]));
-  const readyStep = neisPageWatch(started.formId, '출장결재');
-  check('watch: line picked by name', readyStep.state === 'ready' && pickedLine === 'B' && readyStep.lineNames.join('/') === '기본 결재선/출장 결재', [pickedLine, readyStep]);
-  const noLine = neisPageWatch(started.formId, '없는 결재선');
-  check('watch: line missing -> list names', noLine.state === 'submit' && noLine.lineNames.join('/') === '기본 결재선/출장 결재', noLine);
+
+  // 기안 창 → [개인결재선] → 고르기 창(grd3 → 조회 → grd2) → [지정] → 기안 창 결재자 목록
+  const sancrRows = [];
+  const lineRows = [{ snclnNm: '관' }, { snclnNm: '관장' }];
+  const memberRows = [];
+  const clicks = [];
+  let selectedLine = -1;
+  const pickerApp = fakeApp(NEIS_DRAFT.picker, [
+    fakeControl('grid', 'grd3', { dataSet: fakeDataSet(['snclnNo', 'snclnNm'], lineRows), selectRows: (row) => { selectedLine = row; } }),
+    fakeControl('button', 'btnSearch', { value: '조회', click: () => { clicks.push('조회'); } }),
+    fakeControl('grid', 'grd2', { dataSet: fakeDataSet(['sancrUserNm'], memberRows) }),
+    fakeControl('button', 'btn4', { value: '지정', click: () => { clicks.push('지정'); } }),
+  ]);
+  const draftApp = fakeApp(NEIS_DRAFT.app, [
+    fakeControl('button', 'btnSelectMySancr', { value: '개인결재선', click: () => { clicks.push('개인결재선'); } }),
+    fakeControl('button', 'btnDrft', { value: '상신', click: () => { clicks.push('상신'); } }),
+    fakeControl('dataset', 'dsSancr', { getRowCount: () => sancrRows.length }),
+  ]);
+  runningApps.push(draftApp);
+  check('draft: first look waits for data', watch('관장').state === 'choosing' && clicks.length === 0, clicks);
+  check('draft: opens personal lines', watch('관장').state === 'choosing' && clicks.join() === '개인결재선', clicks);
+  check('draft: waits for picker', watch('관장').state === 'choosing', null);
+  runningApps.push(pickerApp);
+  const picking = watch('관장');
+  check('picker: selects line by name and searches', picking.state === 'choosing' && selectedLine === 1 && clicks.join() === '개인결재선,조회' && picking.lineNames.join('/') === '관/관장', [picking, selectedLine, clicks]);
+  check('picker: waits for members', watch('관장').state === 'choosing' && clicks.length === 2, clicks);
+  memberRows.push({ sancrUserNm: '결재자' });
+  check('picker: presses 지정', watch('관장').state === 'choosing' && clicks.join() === '개인결재선,조회,지정', clicks);
+  runningApps.splice(runningApps.indexOf(pickerApp), 1);
+  sancrRows.push({}, {});
+  const readyStep = watch('관장');
+  check('draft: ready after picker closes', readyStep.state === 'ready' && readyStep.lineNames.join('/') === '관/관장' && !clicks.includes('상신'), [readyStep, clicks]);
+
+  // 이름이 없는 결재선이면 고르기 창을 열어 둔 채 사용자에게 맡긴다
+  runningApps.splice(runningApps.indexOf(draftApp), 1);
+  const draftApp2 = fakeApp(NEIS_DRAFT.app, draftApp.getContainer().getChildren());
+  const pickerApp2 = fakeApp(NEIS_DRAFT.picker, pickerApp.getContainer().getChildren());
+  clicks.length = 0;
+  runningApps.push(draftApp2);
+  watch('없는 결재선');
+  watch('없는 결재선');
+  runningApps.push(pickerApp2);
+  const noLine = watch('없는 결재선');
+  check('picker: missing line -> submit with names', noLine.state === 'submit' && noLine.lineNames.join('/') === '관/관장' && clicks.join() === '개인결재선', [noLine, clicks]);
+  runningApps.splice(runningApps.indexOf(pickerApp2), 1);
+  runningApps.splice(runningApps.indexOf(draftApp2), 1);
+  const draftApp3 = fakeApp(NEIS_DRAFT.app, draftApp.getContainer().getChildren());
+  runningApps.push(draftApp3);
+  check('draft: no line set -> submit right away', watch('').state === 'submit', null);
   runningApps.length = 0;
-  check('watch: form closed', neisPageWatch(started.formId, '출장결재').state === 'closed', null);
+  check('watch: form closed', watch('관').state === 'closed', null);
   delete window.cpr;
 
   // 복무 종류별 결재선: 보통 조퇴·외출·출장 / 연가·종일출장 두 묶음
