@@ -42,8 +42,8 @@ PANEL_ALIVE_SEC = 8
 PENGPT_TIMEOUT_SEC = 200
 PANEL_CLOSED = ("PEN 브라우저 패널이 열려 있지 않습니다. 크롬에서 PEN 브라우저 아이콘을 눌러 패널을 열어 두고 "
                 "(PenGPT 탭도 로그인해 열어 둔 채) 다시 눌러 주세요.")
-# 결재선·과제카드 이름 읽기는 화면만 훑으므로 금방 끝난다
-LISTS_TIMEOUT_SEC = 30
+# 결재선·과제카드 읽기는 K-에듀파인을 열고(최대 40초) 두 화면이 목록을 받을 때까지(각 15초) 기다린다
+LISTS_TIMEOUT_SEC = 120
 
 
 class _Handler(BaseHTTPRequestHandler):

@@ -178,7 +178,9 @@
         <h3>나이스 승인요청</h3>
         <label for="neisLineNames">내 개인결재선 이름 (한 줄에 하나)</label>
         <textarea id="neisLineNames" rows="2" placeholder="예)&#10;짧은 복무 결재선&#10;하루 복무 결재선"></textarea>
-        <p class="help">나이스 상신 화면의 <b>개인결재선</b> 목록에 있는 이름 그대로 적습니다. [승인요청]으로 상신 화면이 한 번 열리면 나이스의 목록을 읽어 여기에 저절로 채웁니다.</p>
+        <button id="fetchNeisLinesBtn" class="btn btn-sub btn-small" type="button">나이스에서 결재선 가져오기</button>
+        <p id="neisLineMsg" class="notice" hidden></p>
+        <p class="help">나이스 <b>상신함 &gt; 개인결재선 등록</b>의 결재선 이름을 읽어 옵니다. 직접 적어도 되고, [승인요청]으로 상신 화면이 한 번 열려도 나이스의 목록을 읽어 저절로 채웁니다.</p>
         <p class="field-title">복무 종류별 결재선</p>
         <div id="neisLineMap" class="line-map"></div>
         <p class="help">보통 <b>조퇴·외출·출장</b>은 한 결재선, <b>연가·종일출장</b>은 다른 결재선을 씁니다. 지각은 조퇴, 병가·공가·특별휴가는 연가 결재선을 따릅니다. 종일출장은 하루를 넘기거나 7시간 이상인 출장입니다.</p>

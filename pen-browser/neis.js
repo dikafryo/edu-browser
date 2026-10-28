@@ -52,6 +52,8 @@ const SUBMIT_WATCH_MS = 5 * 60 * 1000;
 const SUBMIT_POLL_MS = 1000;
 // 하루를 넘기거나 이 시간 이상인 출장은 '종일출장' 결재선을 쓴다
 const FULL_DAY_TRIP_HOURS = 7;
+// 나이스 상신함 > 개인결재선 등록 메뉴 (글자가 이것으로 시작하는 왼쪽 메뉴 링크)
+const NEIS_LINE_MENU = '개인결재선';
 
 /* ===================== 2. 데이터 처리 ===================== */
 function toNeisDate(value) {
@@ -372,6 +374,49 @@ function neisPageWatch(formId, lineName) {
   return { state: 'popup', texts: found.texts.filter(Boolean).slice(0, 12), buttons: found.buttons.slice(0, 8) };
 }
 
+/* 나이스 화면 안(MAIN world)에서 실행된다. 상신함 > 개인결재선 등록 화면을 열어 결재선 이름을 읽는다.
+   결재선 표의 열 이름을 아직 화면에서 확인하지 못해, 이름 열을 못 고르면 표 구조(열 이름·행 수, 값은 빼고)를 돌려준다 */
+async function neisPageReadLines(menuText) {
+  const LINE_NAME_COLUMN = /(atrz|aprv|sanctn|line|ln)\w*nm$/i;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  if (typeof cpr === 'undefined' || !cpr.core) return { ok: false, problem: '4세대 나이스 화면이 아닙니다.' };
+  const platform = cpr.core.Platform.INSTANCE;
+  const before = new Set(platform.getAllRunningAppInstances());
+  let link = null;
+  for (let waited = 0; waited < 10000 && !link; waited += 300) {
+    link = Array.from(document.querySelectorAll('a')).find((a) => a.textContent.trim().startsWith(menuText));
+    if (!link) await sleep(300);
+  }
+  if (!link) return { ok: false, problem: `나이스 왼쪽 메뉴에서 '${menuText}'을(를) 찾지 못했습니다. 상신함 메뉴를 한 번 펼친 뒤 다시 눌러 주세요.` };
+  link.click();
+  const grids = [];
+  for (let waited = 0; waited < 15000 && grids.length === 0; waited += 500) {
+    await sleep(500);
+    const apps = platform.getAllRunningAppInstances();
+    const fresh = apps.filter((app) => !before.has(app));
+    // 이미 열려 있던 화면이면 새로 뜨는 앱이 없으니, 화면 이름에 결재선 낱말이 든 앱을 본다
+    const targets = fresh.length ? fresh : apps.filter((app) => /atrz|aprv|line|ln/i.test(app.app.id));
+    const walk = (control, depth, appId) => {
+      if (!control || depth > 14) return;
+      if (control.type === 'grid' && control.dataSet && control.dataSet.getRowCount() > 0) grids.push({ appId, grid: control });
+      if (control.getChildren) control.getChildren().forEach((child) => walk(child, depth + 1, appId));
+    };
+    targets.forEach((app) => walk(app.getContainer(), 0, app.app.id));
+  }
+  for (const { grid } of grids) {
+    const column = grid.dataSet.getColumnNames().find((name) => LINE_NAME_COLUMN.test(name));
+    if (!column) continue;
+    const names = [];
+    for (let row = 0; row < grid.dataSet.getRowCount(); row += 1) {
+      const name = String(grid.dataSet.getValue(row, column) || '').trim();
+      if (name && !names.includes(name)) names.push(name);
+    }
+    return { ok: true, names };
+  }
+  const structure = grids.map(({ appId, grid }) => `${appId} ${grid.id}(${grid.dataSet.getRowCount()}행): ${grid.dataSet.getColumnNames().slice(0, 25).join(',')}`);
+  return { ok: false, problem: '개인결재선 등록 화면에서 결재선 이름 열을 찾지 못했습니다.', structure };
+}
+
 async function findNeisTab() {
   const tabs = await chrome.tabs.query({});
   return tabs.find((tab) => NEIS_TAB_PATTERN.test(tab.url || '')) || null;
@@ -617,6 +662,24 @@ async function learnLineNames(names) {
   renderNeisLineMap(merged, settings.neis.lines);
 }
 
+async function handleFetchNeisLines() {
+  await withBusy($('fetchNeisLinesBtn'), '가져오는 중…', async () => {
+    try {
+      showNotice($('neisLineMsg'), 'info', '나이스 창을 열고 상신함 > 개인결재선 등록 화면에서 결재선을 읽는 중입니다…');
+      const tab = await getNeisTab();
+      const reply = await runInNeis(tab, neisPageReadLines, [NEIS_LINE_MENU]);
+      if (!reply.ok) {
+        const detail = reply.structure && reply.structure.length ? ` (화면의 표: ${reply.structure.join(' / ')})` : '';
+        throw new Error(reply.problem + detail);
+      }
+      await learnLineNames(reply.names);
+      showNotice($('neisLineMsg'), 'ok', `나이스 결재선 ${reply.names.length}개를 목록에 넣었습니다. 아래에서 복무 종류별로 고른 뒤 [설정 저장]을 눌러 주세요.`);
+    } catch (error) {
+      showNotice($('neisLineMsg'), 'error', error.message);
+    }
+  });
+}
+
 async function handleNeisSubmit() {
   const input = readNeisInput();
   await withBusy($('neisSubmitBtn'), '진행 중…', async () => {
@@ -677,6 +740,7 @@ function initNeis() {
   });
   $('neisFillBtn').addEventListener('click', handleNeisFill);
   $('neisSubmitBtn').addEventListener('click', handleNeisSubmit);
+  $('fetchNeisLinesBtn').addEventListener('click', handleFetchNeisLines);
 }
 
 initNeis();

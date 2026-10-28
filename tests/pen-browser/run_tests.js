@@ -186,21 +186,35 @@
     getColumn: (row, column) => rows[row][column],
   });
   const collection = (items) => Object.assign(items.slice(), {});
-  const lineDs = nexaDataset(['streReportCoursNm', 'streReportCoursId'], [{ streReportCoursNm: '기본 결재선' }, { streReportCoursNm: ' 출장 결재 ' }]);
-  const cardDs = nexaDataset(['tkcrdNm'], [{ tkcrdNm: '[단위과제] 정보보안' }, { tkcrdNm: '[단위과제] 정보보안' }]);
-  const docListDs = nexaDataset(['docSj', 'tkcrdNm'], [{ docSj: '남의 문서', tkcrdNm: '남의 카드' }]);
-  const innerForm = { all: collection([cardDs, docListDs]) };
+  const named = (name, value) => Object.assign(value, { name });
+  const myCards = named('dsList', nexaDataset(['tkcrdNm'], [{ tkcrdNm: '[단위과제] 정보보안' }, { tkcrdNm: ' 부서일반사무 ' }, { tkcrdNm: '[단위과제] 정보보안' }]));
+  const deptCards = named('dsList', nexaDataset(['tkcrdNm'], [{ tkcrdNm: '남의 부서 카드' }]));
+  const myScreen = named(EDUFINE_CARD_SCREEN.screen, { all: collection([myCards]) });
+  const deptScreen = named('AAAREGSDPMN001M01', { all: collection([deptCards]) });
+  const menuRows = [
+    { menuId: 'A00AAA01', menuNm: '과제관리', progrmCoursAdres: '' },
+    { menuId: 'A00AAA0101', menuNm: '나의과제', progrmCoursAdres: 'aaaregsmymn::AAAREGSMYMN001M01.xfdl' },
+  ];
+  let openedMenu = '';
   window.nexacro = {
     getApplication: () => ({
-      mainframe: { frames: collection([{ form: { all: collection([{ form: innerForm }]) } }]) },
-      gdsLine: lineDs,
+      mainframe: { frames: collection([{ form: { all: collection([{ form: deptScreen }, { form: myScreen }]) } }]) },
+      gdsMenu: nexaDataset(['menuId', 'menuNm', 'progrmCoursAdres'], menuRows),
+      gv_leftFrame: { form: { gfnOpenMenu: (id) => { openedMenu = id; } } },
     }),
   };
-  const nexaLists = readEdufineListsInPage();
-  check('edufine lists from nexacro datasets', nexaLists.lines.join('/') === '기본 결재선/출장 결재' && nexaLists.cards.join('/') === '[단위과제] 정보보안', nexaLists);
+  check('my task cards only from 나의과제 screen', readMyTaskCardsInPage(EDUFINE_CARD_SCREEN.screen).join('/') === '[단위과제] 정보보안/부서일반사무', readMyTaskCardsInPage(EDUFINE_CARD_SCREEN.screen));
+  check('open edufine menu by name', openEdufineMenuInPage('나의과제') === true && openedMenu === 'A00AAA0101' && openEdufineMenuInPage('과제관리') === false, openedMenu);
   delete window.nexacro;
-  check('edufine lists null outside nexacro', readEdufineListsInPage() === null, null);
-  check('helper job kinds', Object.keys(HELPER_JOBS).join() === 'pengpt,edufine_lists' && !/\$\(|chrome\./.test(readEdufineListsInPage.toString()), null);
+  check('task cards null outside nexacro', readMyTaskCardsInPage(EDUFINE_CARD_SCREEN.screen) === null, null);
+  const lineBox = document.createElement('div');
+  lineBox.innerHTML = `<select id="${EDUFINE_LINE_SCREEN.select}" size="20"><option> 관 </option><option>관장</option><option>품의</option></select>`;
+  document.body.append(lineBox);
+  check('my approval lines from 나의결재선관리 list', readMyApprLinesInPage(EDUFINE_LINE_SCREEN.select).join('/') === '관/관장/품의', null);
+  lineBox.remove();
+  check('approval lines null on other pages', readMyApprLinesInPage(EDUFINE_LINE_SCREEN.select) === null, null);
+  check('helper job kinds', Object.keys(HELPER_JOBS).join() === 'pengpt,edufine_lists'
+    && [readMyTaskCardsInPage, readMyApprLinesInPage, openEdufineMenuInPage].every((fn) => !/\$\(|chrome\./.test(fn.toString())), null);
 
   // 15. 기타
   check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);

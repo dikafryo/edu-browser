@@ -149,9 +149,19 @@ function probeEdufineDatasets() {
     if (typeof node.getColID === 'function' && typeof node.getRowCount === 'function') {
       const columns = Array.from({ length: node.getColCount() }, (_, index) => node.getColID(index));
       lines.push(`${path}/${node.name || node.id || '?'} (${node.getRowCount()}행): ${columns.slice(0, 25).join(',')}`);
+      // 메뉴 자료는 개인 정보가 아니고, 화면을 여는 방법(프로그램 주소)을 찾는 데 필요하므로 행까지 적는다
+      if (columns.includes('menuNm')) {
+        for (let row = 0; row < Math.min(node.getRowCount(), 200); row += 1) {
+          const cell = (column) => (columns.includes(column) ? String(node.getColumn(row, column) || '') : '');
+          lines.push(`    메뉴 ${cell('menuId')} | ${cell('menuNm')} | ${cell('progrmId')} | ${cell('progrmCoursAdres')} | 위 ${cell('upperMenuId')}`);
+        }
+      }
       return;
     }
     const here = node.name ? `${path}/${node.name}` : path;
+    // 화면에 직접 정의된 함수 중 메뉴·화면 열기와 관련된 이름만 적는다
+    const opens = Object.keys(node).filter((key) => typeof node[key] === 'function' && /menu|open|link|move|go/i.test(key));
+    if (opens.length) lines.push(`${here} 함수: ${opens.slice(0, 40).join(', ')}`);
     ['all', 'objects', 'components', 'frames'].forEach((key) => each(node[key], (child) => visit(child, depth + 1, here)));
     ['form', 'frame', 'mainframe'].forEach((key) => visit(node[key], depth + 1, here));
   };
@@ -162,7 +172,7 @@ function probeEdufineDatasets() {
   } catch (error) {
     lines.push(`(읽다가 멈춤: ${error.message})`);
   }
-  return lines.slice(0, 400);
+  return lines.slice(0, 1200);
 }
 
 async function buildEdufineStructure() {
