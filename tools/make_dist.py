@@ -2,7 +2,7 @@
 
     python tools/make_dist.py
 
-1. 교육청업무도우미-웹스토어-v{버전}.zip — 크롬 웹스토어 개발자 대시보드에 올리는 확장 묶음.
+1. 교직원업무도우미-웹스토어-v{버전}.zip — 크롬 웹스토어 개발자 대시보드에 올리는 확장 묶음.
    manifest.json 이 압축 파일 맨 위에 있어야 하고, 웹스토어는 "key" 항목을 받지 않으므로 빼고 넣는다.
    (key 는 압축해제 설치 때 확장 번호를 고정하려고 둔 것이라 폴더의 manifest 에는 그대로 둔다)
 2. gongmun-helper.zip — neis.me 에 올리는 공문헬퍼. 풀면 gongmun-helper 폴더 하나가 나온다.
@@ -32,14 +32,15 @@ def store_manifest():
 
 def make_store_zip():
     manifest = store_manifest()
-    target = DIST / f"교육청업무도우미-웹스토어-v{manifest['version']}.zip"
+    target = DIST / f"교직원업무도우미-웹스토어-v{manifest['version']}.zip"
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+        # manifest.json 은 압축 파일 맨 앞에 둔다
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         for path in sorted(EXTENSION_DIR.rglob("*")):
             relative = path.relative_to(EXTENSION_DIR).as_posix()
             if path.is_dir() or relative in EXTENSION_SKIP or relative == "manifest.json":
                 continue
             archive.write(path, relative)
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
     return target
 
 
