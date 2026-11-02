@@ -2,9 +2,8 @@
 
 K-에듀파인 공문 작성 창은 크롬 밖 프로그램이라 크롬 확장이 손댈 수 없다.
 그래서 교직원 업무도우미는 공문 작성 요청을 같은 PC 의 공문작성 도우미로 넘기고, 입력은 도우미가 맡는다.
-거꾸로 도우미가 PenGPT 로 초안을 만들 때는 PenGPT 에 API 가 없으므로, 질문을 여기에 쌓아 두면
-교직원 업무도우미 패널이 2초마다 가져가 열어 둔 PenGPT 탭에 대신 묻고 답을 돌려준다.
-같은 통로로 'K-에듀파인 탭에서 나의 결재선·과제카드 이름 읽기'도 맡긴다(작업 kind 로 구분).
+거꾸로 'K-에듀파인 탭에서 나의 결재선·과제카드 이름 읽기'는 크롬 안의 일이라,
+일을 여기에 쌓아 두면 교직원 업무도우미 패널이 2초마다 가져가 하고 답을 돌려준다(작업 kind 로 구분).
 
 - 127.0.0.1 에서만 듣는다. 다른 PC 에서는 접속할 수 없다.
 - Origin 헤더가 교직원 업무도우미 확장인 요청만 받는다. 웹사이트가 몰래 보낸 요청은 Origin 이
@@ -14,7 +13,7 @@ K-에듀파인 공문 작성 창은 크롬 밖 프로그램이라 크롬 확장�
   GET  /ping       → {"ok": true, "app": "공문작성 도우미", "version": "..."}
   POST /gongmun    {"request": "..."} → {"ok": true}
   POST /ai/next    {} → {"ok": true, "job": {"id", "kind", ...} 또는 null}
-                   kind "pengpt": {"system", "user"} / kind "edufine_lists": 추가 값 없음
+                   kind "edufine_lists": 추가 값 없음
   POST /ai/result  {"id", "answer"} 또는 {"id", "error"} → {"ok": true}
                    edufine_lists 의 answer 는 {"lines": [...], "cards": [...]} JSON 글자
 """
@@ -38,10 +37,8 @@ ALLOWED_ORIGINS = {f"chrome-extension://{ext_id}" for ext_id in PEN_BROWSER_EXTE
 
 # 패널이 2초마다 가져가므로, 이만큼 소식이 없으면 교직원 업무도우미 패널이 닫혀 있다고 본다
 PANEL_ALIVE_SEC = 8
-# 확장의 PenGPT 대기(3분)보다 조금 길게 기다린다
-PENGPT_TIMEOUT_SEC = 200
 PANEL_CLOSED = ("교직원 업무도우미 패널이 열려 있지 않습니다. 크롬에서 교직원 업무도우미 아이콘을 눌러 패널을 열어 두고 "
-                "(PenGPT 탭도 로그인해 열어 둔 채) 다시 눌러 주세요.")
+                "다시 눌러 주세요.")
 # 결재선·과제카드 읽기는 K-에듀파인을 열고(최대 40초) 두 화면이 목록을 받을 때까지(각 15초) 기다린다
 LISTS_TIMEOUT_SEC = 120
 
@@ -179,7 +176,7 @@ class PenBridge(QObject):
             self._server.server_close()
             self._server = None
 
-    # ---------- PenGPT 대신 묻기 ----------
+    # ---------- 패널에 일 맡기기 ----------
     def panel_alive(self):
         return time.monotonic() - self._last_panel_poll < PANEL_ALIVE_SEC
 
@@ -225,11 +222,6 @@ class PenBridge(QObject):
         if job.error:
             raise RuntimeError(error_prefix + job.error)
         return job.answer
-
-    def ask_pengpt(self, system, user, timeout=PENGPT_TIMEOUT_SEC):
-        return self._ask_panel({"kind": "pengpt", "system": system, "user": user}, timeout,
-                               "PenGPT 답이 3분 넘게 오지 않았습니다. PenGPT 탭을 확인한 뒤 다시 눌러 주세요.",
-                               "PenGPT 에 묻지 못했습니다: ")
 
     def ask_edufine_lists(self, timeout=LISTS_TIMEOUT_SEC):
         """크롬 K-에듀파인 탭에서 읽은 {"lines": [결재선 이름], "cards": [과제카드 이름]}."""

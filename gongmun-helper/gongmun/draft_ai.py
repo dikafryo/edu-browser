@@ -1,14 +1,59 @@
-"""공문 초안 AI — 자체 AI 서버(Ollama) 또는 교육청 PenGPT 로만 보낸다.
+"""공문 초안 AI — 사용자가 설정에서 고른 무료 AI 서비스(OpenAI 호환)로만 보낸다.
 
-공문 요청에는 업무 내용이 들어가므로 외부 AI(Claude·ChatGPT·Gemini 등)로는 보내지 않는다.
-PenGPT 는 연결용 주소(API)가 없어서, 교직원 업무도우미(크롬 확장)가 열어 둔 PenGPT 탭에 대신 묻는다(bridge.py).
+공문 요청에는 업무 내용이 들어가므로 내용이 그 서비스로 전송된다. 화면에 그 사실을 알린다.
+키는 이 PC 의 data/settings.json 에만 저장하고 로그에 남기지 않는다.
 """
 import json
 from datetime import datetime, timedelta, timezone
 
-DRAFT_TIMEOUT_SEC = 300      # 맥북 모델은 30초~수 분 걸릴 수 있다
-AI_PROVIDERS = {"ollama": "자체 AI 서버 (Ollama)", "pengpt": "교육청 PenGPT (교직원 업무도우미 통해)"}
-DRAFT_CONTEXT_TOKENS = 16384  # Ollama 기본값(2천~4천 토큰)으로는 긴 요청이 잘린다
+DRAFT_TIMEOUT_SEC = 300      # 긴 공문도 쓸 수 있게 넉넉히 기다린다
+
+# 무료 AI 서비스 목록. pen-browser/sidepanel.js 의 AI_SERVICES 와 같은 내용으로 맞춘다.
+AI_SERVICES = [
+    {
+        "id": "groq",
+        "name": "Groq (무료·빠름)",
+        "short_name": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": "openai/gpt-oss-120b",
+        "key_help": "console.groq.com/keys 에서 로그인 → Create API Key → 만든 키를 복사해 붙여넣으세요.",
+        "data_note": "무료 등급이며 API 데이터를 학습에 쓰지 않는다고 밝히고 있습니다. 공문에 권합니다.",
+    },
+    {
+        "id": "upstage",
+        "name": "Upstage Solar (한국어 강함)",
+        "short_name": "Upstage",
+        "base_url": "https://api.upstage.ai/v1",
+        "model": "solar-pro4",
+        "key_help": "console.upstage.ai 에서 가입 → API Keys → 새 키 만들기 → 키를 복사해 붙여넣으세요.",
+        "data_note": "API 데이터를 저장·학습하지 않는다고 밝히고 있습니다. 가입 크레딧과 교육기관 무료 프로그램이 있습니다.",
+    },
+    {
+        "id": "openrouter",
+        "name": "OpenRouter (여러 무료 모델)",
+        "short_name": "OpenRouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "google/gemma-4-31b-it:free",
+        "key_help": "openrouter.ai/keys 에서 로그인 → Create Key → 키를 복사해 붙여넣으세요.",
+        "data_note": "무료(:free) 모델만 씁니다. 모델마다 데이터 정책이 다르니 공문에는 Groq·Upstage를 권합니다.",
+    },
+    {
+        "id": "gemini",
+        "name": "Google Gemini (무료 등급)",
+        "short_name": "Gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "model": "gemini-3.8-flash",
+        "key_help": "aistudio.google.com/apikey 에서 Google 계정으로 로그인 → Create API key → 키를 복사해 붙여넣으세요.",
+        "data_note": "무료 등급은 입력 내용이 Google 제품 개선에 쓰일 수 있어 공문·학생 정보에는 권하지 않습니다.",
+    },
+]
+
+
+def service_for(provider):
+    """설정에 저장된 서비스 id → 서비스 정보. 모르는 id 면 첫 서비스(Groq)."""
+    return next((service for service in AI_SERVICES if service["id"] == provider), AI_SERVICES[0])
+
+
 KST = timezone(timedelta(hours=9))
 WEEKDAYS = "월화수목금토일"
 
@@ -90,38 +135,41 @@ def extract_json(text):
     return None
 
 
-def list_models(base_url):
-    import requests
-    resp = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=10)
-    resp.raise_for_status()
-    return [model["name"] for model in resp.json().get("models", [])]
-
-
-def ollama_asker(base_url, model):
-    """(system, user) → 답 글자. 실패하면 한국어 메시지의 RuntimeError."""
+def api_asker(base_url, api_key, model):
+    """(system, user) → 답 글자. 무료 AI 서비스의 /chat/completions 를 부른다."""
     import requests
 
     def ask(system, user):
         try:
             resp = requests.post(
-                f"{base_url.rstrip('/')}/api/chat",
+                f"{base_url.rstrip('/')}/chat/completions",
                 timeout=DRAFT_TIMEOUT_SEC,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
                     "model": model,
+                    "temperature": 0.3,
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                    "stream": False,
-                    "format": "json",
-                    "options": {"num_ctx": DRAFT_CONTEXT_TOKENS},
                 },
             )
-            resp.raise_for_status()
         except requests.exceptions.ConnectionError:
-            raise RuntimeError("자체 AI 서버(Ollama)에 연결하지 못했습니다. 서버(맥북)가 켜져 있고 주소가 맞는지 확인해 주세요.")
+            raise RuntimeError("AI API에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.")
         except requests.exceptions.Timeout:
-            raise RuntimeError("AI 응답이 너무 오래 걸려 멈췄습니다. 더 작은 모델을 쓰거나 다시 시도해 주세요.")
+            raise RuntimeError("AI 응답이 너무 오래 걸려 멈췄습니다. 내용을 줄이거나 다시 시도해 주세요.")
+        if resp.status_code in (401, 403):
+            raise RuntimeError("API 키가 맞지 않거나 권한이 없습니다. ⚙ 목록·AI 설정에서 키를 확인해 주세요.")
+        if resp.status_code == 404:
+            raise RuntimeError("AI 서비스에서 모델을 찾지 못했습니다. 다른 서비스를 고르거나 잠시 뒤 다시 시도해 주세요.")
+        if resp.status_code == 429:
+            raise RuntimeError("무료 사용량을 다 썼습니다. 잠시 뒤 또는 내일 다시 시도해 주세요.")
+        try:
+            resp.raise_for_status()
         except requests.exceptions.HTTPError:
-            raise RuntimeError(f"자체 AI 서버가 요청을 거절했습니다({resp.status_code}). 모델 이름을 확인해 주세요.")
-        return resp.json().get("message", {}).get("content", "")
+            raise RuntimeError(f"AI API가 요청을 거절했습니다({resp.status_code}). 잠시 후 다시 시도해 주세요.")
+        try:
+            choice = (resp.json().get("choices") or [])[0]
+        except (ValueError, IndexError):
+            raise RuntimeError("AI API의 답을 읽지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        return (choice.get("message") or {}).get("content") or ""
 
     return ask
 

@@ -1,6 +1,6 @@
 /* 교직원 업무도우미 – 사이드 패널
    위쪽 메뉴(사용 방법·나이스·K-에듀파인·설정) 전환, 업무포털 메뉴로 나이스·K-에듀파인 창 열기,
-   결재·공람 점검용 AI 연결, 공문작성 도우미로 공문 작성 요청 넘기기(도우미가 PenGPT를 고르면 대신 묻기)를 맡는다.
+   결재·공람 점검용 무료 AI 서비스 연결, 공문작성 도우미로 공문 작성 요청 넘기기를 맡는다.
    공문 작성 창(크롬 밖 프로그램)에 넣는 일은 짝 프로그램인 공문작성 도우미(gongmun-helper)가 한다. */
 
 /* ===================== 1. 설정 ===================== */
@@ -8,7 +8,6 @@
 const SITES = [
   { id: 'portal', name: '업무포털', keywords: ['업무포털', 'eduptl'] },
   { id: 'edufine', name: 'K-에듀파인', keywords: ['에듀파인', 'klef', 'Edufine', 'EDUFINE'] },
-  { id: 'pengpt', name: 'PenGPT', keywords: ['PenGPT', 'pengpt', 'PENGPT'] },
 ];
 // 업무포털 위 메뉴(나이스·K-에듀파인)는 로그인 정보를 넘기며 새 창을 연다(SSO). 주소를 직접 열면 로그인이 안 된다
 const PORTAL_URL_PATTERN = /eduptl\.kr/;
@@ -23,33 +22,66 @@ const TAB_IDS = ['guide', 'neis', 'edufine', 'settings'];
 const NEIS_LINE_KINDS = ['연가', '조퇴', '외출', '출장', '종일출장', '연수'];
 const PANEL_TAB_KEY = 'panelTab';
 
-const AI_PROVIDERS = ['ollama', 'pengpt'];
-const DEFAULT_AI = {
-  provider: 'ollama',
-  ollamaUrl: '',
-  ollamaModel: '',
-};
+// 무료 AI 서비스 목록. gongmun-helper/gongmun/draft_ai.py 의 AI_SERVICES 와 같은 내용으로 맞춘다.
+// 모델 이름이 바뀌면 여기만 고치면 된다(사용자는 서비스만 고르고 키만 넣는다).
+const AI_SERVICES = [
+  {
+    id: 'groq',
+    name: 'Groq (무료·빠름)',
+    shortName: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model: 'openai/gpt-oss-120b',
+    keyHelp: 'console.groq.com/keys 에서 로그인 → Create API Key → 만든 키를 복사해 아래에 붙여넣으세요.',
+    dataNote: '무료 등급이며 API 데이터를 학습에 쓰지 않는다고 밝히고 있습니다. 공문에 권합니다.',
+  },
+  {
+    id: 'upstage',
+    name: 'Upstage Solar (한국어 강함)',
+    shortName: 'Upstage',
+    baseUrl: 'https://api.upstage.ai/v1',
+    model: 'solar-pro4',
+    keyHelp: 'console.upstage.ai 에서 가입 → API Keys → 새 키 만들기 → 키를 복사해 아래에 붙여넣으세요.',
+    dataNote: 'API 데이터를 저장·학습하지 않는다고 밝히고 있습니다. 가입 크레딧과 교육기관 무료 프로그램이 있습니다.',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter (여러 무료 모델)',
+    shortName: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'google/gemma-4-31b-it:free',
+    keyHelp: 'openrouter.ai/keys 에서 로그인 → Create Key → 키를 복사해 아래에 붙여넣으세요.',
+    dataNote: '무료(:free) 모델만 씁니다. 모델마다 데이터 정책이 다르니 공문에는 Groq·Upstage를 권합니다.',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini (무료 등급)',
+    shortName: 'Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    model: 'gemini-3.8-flash',
+    keyHelp: 'aistudio.google.com/apikey 에서 Google 계정으로 로그인 → Create API key → 키를 복사해 아래에 붙여넣으세요.',
+    dataNote: '무료 등급은 입력 내용이 Google 제품 개선에 쓰일 수 있어 공문·학생 정보에는 권하지 않습니다.',
+  },
+];
+const AI_SERVICE_IDS = AI_SERVICES.map((service) => service.id);
+const DEFAULT_AI = { provider: 'groq', keys: {} };
+
+function serviceFor(id) {
+  return AI_SERVICES.find((service) => service.id === id) || AI_SERVICES[0];
+}
 
 // 같은 PC에서 켜 둔 공문작성 도우미의 연결 통로. 포트를 바꾸면 gongmun/config.py 의 PEN_BRIDGE_PORT 도 같이 바꾼다
 const HELPER_URL = 'http://127.0.0.1:47615';
 const HELPER_TIMEOUT_MS = 5000;
 // 패널을 연 뒤에 도우미를 켜도 상태 표시가 따라오도록 주기적으로 다시 확인한다
 const HELPER_CHECK_MS = 15000;
-// 도우미가 PenGPT 로 공문 초안을 만들 때, 이 패널이 도우미에 쌓인 질문을 가져가 PenGPT 탭에 대신 묻는다
+// 도우미가 맡긴 'K-에듀파인 결재선·과제카드 읽기'를 이 패널이 가져가 결과를 돌려준다
 const HELPER_AI_POLL_MS = 2000;
 const HELPER_OFFLINE = '공문작성 도우미가 켜져 있지 않습니다. gongmun-helper 폴더의 실행.bat 을 더블클릭한 뒤 다시 눌러 주세요.';
 
-const PENGPT_SLOTS = [
-  { key: 'pengpt.input', label: '질문 입력칸', optional: false },
-  { key: 'pengpt.send', label: '보내기 버튼 (비워 두면 Enter로 보냄)', optional: true },
-  { key: 'pengpt.answer', label: '대화 내용이 나오는 영역', optional: false },
-];
-// 위치 지정·진단을 할 사이트 (같은 도메인의 다른 주소·새 창도 포함)
-const WORK_SITE_IDS = ['edufine', 'portal', 'pengpt'];
+// 진단을 할 사이트 (같은 도메인의 다른 주소·새 창도 포함)
+const WORK_SITE_IDS = ['edufine', 'portal'];
 
 const AI_TIMEOUT_MS = 180000;
-// Ollama 기본값(2천~4천 토큰)으로는 긴 결재·공람 화면 글자가 잘리므로 넉넉히 잡는다
-const AI_CONTEXT_TOKENS = 16384;
 
 /* ===================== 2. 데이터 처리 ===================== */
 const $ = (id) => document.getElementById(id);
@@ -59,14 +91,17 @@ let settings = null;
 // 예전 판의 공문 작성 설정(기관명·결재선·과제카드·Gemini)은 공문작성 도우미로 옮겨 갔으므로 읽지 않는다
 function withDefaults(saved = {}) {
   const savedAi = saved.ai || {};
+  const savedKeys = savedAi.keys && typeof savedAi.keys === 'object' ? savedAi.keys : {};
+  const keys = {};
+  AI_SERVICE_IDS.forEach((id) => {
+    if (typeof savedKeys[id] === 'string' && savedKeys[id]) keys[id] = savedKeys[id];
+  });
   return {
     myDuties: saved.myDuties || '',
     neis: neisDefaults(saved.neis),
-    slots: { ...(saved.slots || {}) },
     ai: {
-      provider: AI_PROVIDERS.includes(savedAi.provider) ? savedAi.provider : DEFAULT_AI.provider,
-      ollamaUrl: savedAi.ollamaUrl || DEFAULT_AI.ollamaUrl,
-      ollamaModel: savedAi.ollamaModel || DEFAULT_AI.ollamaModel,
+      provider: AI_SERVICE_IDS.includes(savedAi.provider) ? savedAi.provider : DEFAULT_AI.provider,
+      keys,
     },
   };
 }
@@ -109,10 +144,6 @@ function formatToday() {
 }
 
 // ---------- 2-3. AI ----------
-function trimSlash(url) {
-  return (url || '').trim().replace(/\/+$/, '');
-}
-
 async function fetchWithTimeout(url, options, offlineMessage) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -120,7 +151,7 @@ async function fetchWithTimeout(url, options, offlineMessage) {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
     if (error.name === 'AbortError') {
-      throw new Error('AI 응답이 3분 넘게 오지 않았습니다. 내용을 줄이거나 더 작은 모델을 골라 주세요.');
+      throw new Error('AI 응답이 3분 넘게 오지 않았습니다. 내용을 줄이거나 잠시 뒤 다시 시도해 주세요.');
     }
     throw new Error(offlineMessage);
   } finally {
@@ -128,45 +159,36 @@ async function fetchWithTimeout(url, options, offlineMessage) {
   }
 }
 
-const OLLAMA_OFFLINE = '자체 AI 서버(Ollama)에 연결하지 못했습니다. 서버(맥북)가 켜져 있고 Tailscale이 연결되어 있는지, 설정의 주소가 맞는지 확인해 주세요.';
+// 무료 AI 서비스는 모두 OpenAI 와 같은 /chat/completions 형식을 쓴다
+const AI_OFFLINE = 'AI API에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
 
-function ollamaErrorMessage(status) {
-  if (status === 403) return '자체 AI 서버(Ollama)가 접속을 막고 있습니다. 설정 > "자체 AI 서버(맥북 Ollama) 준비 방법" 1~2번을 해 주세요.';
-  if (status === 404) return '고른 AI 모델이 서버에 없습니다. 설정에서 모델 목록을 다시 불러와 주세요.';
-  return `AI 서버가 오류를 알려 왔습니다(번호 ${status}). 잠시 후 다시 시도해 주세요.`;
+function aiErrorMessage(status) {
+  if (status === 401 || status === 403) return 'API 키가 맞지 않거나 권한이 없습니다. 설정에서 키를 다시 확인해 주세요.';
+  if (status === 404) return '고른 AI 서비스에서 모델을 찾지 못했습니다. 다른 서비스를 고르거나 잠시 뒤 다시 시도해 주세요.';
+  if (status === 429) return '무료 사용량을 다 썼습니다. 잠시 뒤 또는 내일 다시 시도해 주세요.';
+  return `AI API가 오류를 알려 왔습니다(번호 ${status}). 잠시 후 다시 시도해 주세요.`;
 }
 
-// 주소가 비어 있으면 확장 자신의 주소로 요청이 가 엉뚱한 오류가 나므로 먼저 막는다
-function ollamaBaseUrl() {
-  const url = trimSlash(settings.ai.ollamaUrl);
-  if (!/^https?:\/\//.test(url)) throw new Error('설정 > AI 연결에서 Ollama 주소(http://로 시작)를 먼저 적어 주세요.');
-  return url;
+function aiKeyFor(provider) {
+  const key = ((settings.ai.keys || {})[provider] || '').trim();
+  if (!key) throw new Error('설정 > AI 연결에서 API 키를 먼저 넣어 주세요.');
+  return key;
 }
 
-async function listOllamaModels() {
-  const response = await fetchWithTimeout(`${ollamaBaseUrl()}/api/tags`, {}, OLLAMA_OFFLINE);
-  if (!response.ok) throw new Error(ollamaErrorMessage(response.status));
+async function callAiApi(service, key, system, user) {
+  const response = await fetchWithTimeout(`${service.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: service.model,
+      temperature: 0.3,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    }),
+  }, AI_OFFLINE);
+  if (!response.ok) throw new Error(aiErrorMessage(response.status));
   const data = await response.json();
-  return [...new Set((data.models || []).map((model) => model.name))];
-}
-
-async function callOllama(system, user) {
-  const { ollamaModel } = settings.ai;
-  const ollamaUrl = ollamaBaseUrl();
-  if (!ollamaModel) throw new Error('설정에서 사용할 AI 모델을 먼저 골라 주세요.');
-  const body = {
-    model: ollamaModel,
-    stream: false,
-    format: 'json',
-    options: { temperature: 0.3, num_ctx: AI_CONTEXT_TOKENS },
-    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-  };
-  const response = await fetchWithTimeout(`${ollamaUrl}/api/chat`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }, OLLAMA_OFFLINE);
-  if (!response.ok) throw new Error(ollamaErrorMessage(response.status));
-  const data = await response.json();
-  return (data.message && data.message.content) || '';
+  const choice = (data.choices || [])[0];
+  return (choice && choice.message && choice.message.content) || '';
 }
 
 async function findSiteTab(siteId) {
@@ -175,48 +197,17 @@ async function findSiteTab(siteId) {
   return tabs.find((tab) => matchSite(tab, site)) || null;
 }
 
-function findPenGptTab() {
-  return findSiteTab('pengpt');
-}
-
-// PenGPT는 API가 없어서, 열린 PenGPT 탭 화면에 질문을 넣고 답변 글자를 읽어 온다
-async function callPenGpt(system, user) {
-  const missing = PENGPT_SLOTS.filter(({ key, optional }) => !optional && !settings.slots[key]).map(({ label }) => label);
-  if (missing.length > 0) throw new Error(`설정 > AI 연결 > PenGPT에서 다음 위치를 먼저 지정해 주세요: ${missing.join(', ')}`);
-  const tab = await findPenGptTab();
-  if (!tab) throw new Error('PenGPT 탭을 찾지 못했습니다. PenGPT에 로그인한 탭을 열어 둔 뒤 다시 눌러 주세요.');
-  // 화면에 다시 보이는 내 질문과 AI 답변을 가르는 표시
-  const endMark = `(질문 끝 ${Date.now().toString(36)})`;
-  const job = {
-    kind: 'ask',
-    text: `${system}\n\n${user}\n\n${endMark}`,
-    endMark,
-    timeoutMs: AI_TIMEOUT_MS,
-    slots: { input: settings.slots['pengpt.input'], send: settings.slots['pengpt.send'], answer: settings.slots['pengpt.answer'] },
-  };
-  let frames;
-  try {
-    frames = await runInFrames(tab.id, (pageJob) => window.__pen.run(pageJob), [job]);
-  } catch (error) {
-    throw new Error('PenGPT 화면에 질문을 넣지 못했습니다. PenGPT 탭을 새로 고친 뒤 다시 눌러 주세요.');
-  }
-  const done = frames.map((frame) => frame.result).find((result) => result && result.handled);
-  if (!done) throw new Error('PenGPT 화면에서 질문 입력칸을 찾지 못했습니다. 설정에서 입력칸 위치를 다시 지정해 주세요.');
-  if (done.problem) throw new Error(done.problem);
-  return done.answer;
-}
-
-// 공문 내용은 이 둘(자체 AI 서버 Ollama, 교육청 PenGPT)로만 보낸다
+// 공문 내용은 설정에서 고른 무료 AI 서비스로만 보낸다
 function askAi(system, user) {
-  if (settings.ai.provider === 'pengpt') return callPenGpt(system, user);
-  return callOllama(system, user);
+  const service = serviceFor(settings.ai.provider);
+  return callAiApi(service, aiKeyFor(service.id), system, user);
 }
 
 function aiName() {
-  return settings.ai.provider === 'pengpt' ? 'PenGPT' : '자체 AI 서버';
+  return serviceFor(settings.ai.provider).shortName;
 }
 
-// PenGPT 화면 글자에는 질문 예시 JSON도 섞여 있으므로 맨 마지막 JSON을 답으로 본다
+// AI 답에 앞뒤 말이 섞여도 마지막으로 온전한 JSON 객체를 답으로 본다
 function extractJson(text) {
   const end = text.lastIndexOf('}');
   let start = text.lastIndexOf('{', end);
@@ -335,24 +326,6 @@ async function findTargetTabs() {
   return ordered.filter((tab, index) => ordered.findIndex((other) => other.id === tab.id) === index);
 }
 
-async function runInFrames(tabId, func, args) {
-  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['filler.js'] });
-  return chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func, args });
-}
-
-async function broadcastPicking(slotKey) {
-  const tabs = await findTargetTabs();
-  for (const tab of tabs) {
-    try {
-      const func = slotKey ? (key) => window.__pen.startPicking(key) : () => window.__pen.stopPicking();
-      await runInFrames(tab.id, func, slotKey ? [slotKey] : []);
-    } catch (error) {
-      // 스크립트를 넣을 수 없는 탭은 건너뛴다
-    }
-  }
-  return tabs.length;
-}
-
 // ---------- 2-5. 공문작성 도우미 (짝 프로그램) ----------
 // 공문 작성 창은 크롬 밖 프로그램이라, 같은 PC의 공문작성 도우미가 받아서 넣는다
 async function callHelper(path, options = {}) {
@@ -388,12 +361,6 @@ let helperAiBusy = false;
 
 // 도우미가 맡긴 일의 종류별 안내 문구와 할 일. edufine_lists 는 inbox.js 의 readEdufineLists 가 맡는다
 const HELPER_JOBS = {
-  pengpt: {
-    busy: '공문작성 도우미의 요청으로 PenGPT에 공문 초안을 묻는 중입니다. PenGPT 탭을 닫지 마세요…',
-    done: 'PenGPT 답을 공문작성 도우미로 보냈습니다.',
-    failed: 'PenGPT에 묻지 못했습니다',
-    run: (job) => callPenGpt(job.system, job.user),
-  },
   edufine_lists: {
     busy: '공문작성 도우미의 요청으로 K-에듀파인 탭에서 나의 결재선·과제카드 이름을 읽는 중입니다…',
     done: '나의 결재선·과제카드 이름을 공문작성 도우미로 보냈습니다.',
@@ -402,7 +369,7 @@ const HELPER_JOBS = {
   },
 };
 
-// 도우미가 쌓아 둔 일(PenGPT 질문, K-에듀파인 목록 읽기)을 하나 가져와 하고 결과(또는 실패 이유)를 돌려준다
+// 도우미가 쌓아 둔 일(K-에듀파인 결재선·과제카드 읽기)을 하나 가져와 하고 결과(또는 실패 이유)를 돌려준다
 async function relayHelperAiJob() {
   if (!helperOnline || helperAiBusy) return;
   let job;
@@ -412,10 +379,9 @@ async function relayHelperAiJob() {
     return;
   }
   if (!job) return;
-  // 예전 도우미는 kind 없이 PenGPT 질문만 보낸다
-  const task = HELPER_JOBS[job.kind || 'pengpt'];
+  const task = HELPER_JOBS[job.kind];
   if (!task) {
-    await postToHelper('/ai/result', { id: job.id, error: '교직원 업무도우미가 모르는 요청입니다. 교직원 업무도우미를 새 판으로 고쳐 주세요.' }).catch(() => {});
+    await postToHelper('/ai/result', { id: job.id, error: '교직원 업무도우미가 모르는 요청입니다. 두 프로그램을 모두 새 판으로 고쳐 주세요.' }).catch(() => {});
     return;
   }
   helperAiBusy = true;
@@ -474,39 +440,17 @@ function showTab(tabId) {
   window.scrollTo(0, 0);
 }
 
-function makeSlotRow(slotKey, label) {
-  const row = document.createElement('div');
-  row.className = 'slot-row';
-  const name = document.createElement('span');
-  name.textContent = label;
-  const record = settings.slots[slotKey];
-  const state = document.createElement('span');
-  state.className = 'slot-state';
-  state.dataset.done = String(Boolean(record));
-  state.textContent = record ? `✔ 지정됨${record.label ? ` (${record.label})` : ''}` : '아직 지정 안 됨';
-  row.append(
-    name,
-    makeButton('위치 지정', 'btn btn-sub btn-small', () => handleStartPicking(slotKey, label)),
-    makeButton('지우기', 'btn btn-sub btn-small', () => handleClearSlot(slotKey)),
-    state,
-  );
-  return row;
-}
-
-function renderPenGptSlots() {
-  $('penGptSlots').replaceChildren(...PENGPT_SLOTS.map(({ key, label }) => makeSlotRow(key, `PenGPT: ${label}`)));
+function renderAiServiceHelp() {
+  const service = serviceFor($('aiProvider').value);
+  $('aiKeyHelp').textContent = service.keyHelp;
+  $('aiDataNote').textContent = service.dataNote;
 }
 
 function renderAiSettings() {
   const { ai } = settings;
-  document.querySelectorAll('input[name="aiProvider"]').forEach((radio) => { radio.checked = radio.value === ai.provider; });
-  $('ollamaBox').hidden = ai.provider !== 'ollama';
-  $('penGptBox').hidden = ai.provider !== 'pengpt';
-  renderPenGptSlots();
-  $('ollamaUrl').value = ai.ollamaUrl;
-  if (!$('ollamaModel').options.length && ai.ollamaModel) {
-    fillSelect($('ollamaModel'), [{ value: ai.ollamaModel, text: ai.ollamaModel }], ai.ollamaModel);
-  }
+  fillSelect($('aiProvider'), AI_SERVICES.map((service) => ({ value: service.id, text: service.name })), ai.provider);
+  $('apiKey').value = ai.keys[ai.provider] || '';
+  renderAiServiceHelp();
 }
 
 // 복무 종류마다 결재선 고르기 칸을 그린다. 지금 고른 값은 이름 목록이 바뀌어도 유지한다
@@ -606,36 +550,14 @@ async function checkHelperConnection() {
   }
 }
 
-async function handleStartPicking(slotKey, label) {
-  const count = await broadcastPicking(slotKey);
-  if (count === 0) {
-    showNotice($('penGptMsg'), 'warn', 'PenGPT 탭을 찾지 못했습니다. PenGPT를 연 뒤 다시 눌러 주세요.');
-    return;
-  }
-  showNotice($('penGptMsg'), 'info', `PenGPT 화면에서 '${label}'을(를) 한 번 클릭하세요. 취소하려면 Esc를 누르세요.`);
-}
-
-async function handlePicked(message) {
-  settings.slots[message.slotKey] = message.record;
-  await saveSettings();
-  await broadcastPicking(null);
-  renderPenGptSlots();
-  showNotice($('penGptMsg'), 'ok', '위치를 저장했습니다.');
-}
-
-async function handleClearSlot(slotKey) {
-  delete settings.slots[slotKey];
-  await saveSettings();
-  renderPenGptSlots();
-}
-
 function readSettingsForm() {
   settings.myDuties = $('myDuties').value.trim();
   settings.neis.lineNames = readNeisLineNames();
   settings.neis.lines = readNeisLineMap();
   settings.neis.phone = $('neisPhone').value.trim();
-  settings.ai.ollamaUrl = trimSlash($('ollamaUrl').value);
-  settings.ai.ollamaModel = $('ollamaModel').value;
+  const provider = $('aiProvider').value;
+  settings.ai.provider = AI_SERVICE_IDS.includes(provider) ? provider : DEFAULT_AI.provider;
+  settings.ai.keys[settings.ai.provider] = $('apiKey').value.trim();
 }
 
 async function handleSaveSettings() {
@@ -645,17 +567,15 @@ async function handleSaveSettings() {
   checkAiConnection();
 }
 
-async function handleLoadModels() {
-  settings.ai.ollamaUrl = trimSlash($('ollamaUrl').value);
-  await withBusy($('loadModelsBtn'), '불러오는 중…', async () => {
-    try {
-      const models = await listOllamaModels();
-      fillSelect($('ollamaModel'), models.map((name) => ({ value: name, text: name })), settings.ai.ollamaModel);
-      showNotice($('aiMsg'), 'ok', `모델 ${models.length}개를 찾았습니다. 하나를 고른 뒤 설정 저장을 눌러 주세요.`);
-    } catch (error) {
-      showNotice($('aiMsg'), 'error', error.message);
-    }
-  });
+// 서비스를 바꾸면 그 서비스에 넣어 둔 키를 보여 준다. 다른 서비스 키를 잘못 보내지 않는다
+function handleProviderChange() {
+  const previous = settings.ai.provider;
+  if (AI_SERVICE_IDS.includes(previous)) settings.ai.keys[previous] = $('apiKey').value.trim();
+  const provider = $('aiProvider').value;
+  settings.ai.provider = AI_SERVICE_IDS.includes(provider) ? provider : DEFAULT_AI.provider;
+  $('apiKey').value = settings.ai.keys[settings.ai.provider] || '';
+  renderAiServiceHelp();
+  checkAiConnection();
 }
 
 async function handleTestAi() {
@@ -664,7 +584,7 @@ async function handleTestAi() {
     try {
       await askAi('JSON으로만 답한다.', '{"answer":"연결됨"} 을 그대로 출력해.');
       showNotice($('aiMsg'), 'ok', 'AI가 정상적으로 답했습니다.');
-      setPill('aiStatus', 'ok', 'AI 연결됨');
+      setPill('aiStatus', 'ok', `${aiName()} 연결됨`);
     } catch (error) {
       showNotice($('aiMsg'), 'error', error.message);
       setPill('aiStatus', 'error', 'AI 연결 안 됨');
@@ -672,19 +592,10 @@ async function handleTestAi() {
   });
 }
 
-async function checkAiConnection() {
-  if (settings.ai.provider === 'pengpt') {
-    const tab = await findPenGptTab();
-    setPill('aiStatus', tab ? 'ok' : 'error', tab ? 'PenGPT 사용' : 'PenGPT 탭 없음');
-    return;
-  }
-  try {
-    const models = await listOllamaModels();
-    const ready = models.includes(settings.ai.ollamaModel);
-    setPill('aiStatus', ready ? 'ok' : 'error', ready ? 'AI 연결됨' : '모델 고르기 필요');
-  } catch (error) {
-    setPill('aiStatus', 'error', 'AI 연결 안 됨');
-  }
+function checkAiConnection() {
+  const service = serviceFor(settings.ai.provider);
+  const key = (settings.ai.keys[service.id] || '').trim();
+  setPill('aiStatus', key ? 'ok' : 'error', key ? `${service.shortName} 키 있음` : 'API 키 필요');
 }
 
 function bindHelperEvents() {
@@ -707,21 +618,8 @@ async function restoreTab() {
 function bindSettingsEvents() {
   $('saveSettingsBtn').addEventListener('click', handleSaveSettings);
   $('neisLineNames').addEventListener('input', () => renderNeisLineMap(readNeisLineNames(), readNeisLineMap()));
-  $('loadModelsBtn').addEventListener('click', handleLoadModels);
+  $('aiProvider').addEventListener('change', handleProviderChange);
   $('testAiBtn').addEventListener('click', handleTestAi);
-  document.querySelectorAll('input[name="aiProvider"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      settings.ai.provider = radio.value;
-      renderAiSettings();
-    });
-  });
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'pen-picked') handlePicked(message);
-    if (message.type === 'pen-pick-cancel') {
-      broadcastPicking(null);
-      showNotice($('penGptMsg'), 'info', '위치 지정을 취소했습니다.');
-    }
-  });
 }
 
 async function init() {

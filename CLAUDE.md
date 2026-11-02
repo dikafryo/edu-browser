@@ -4,7 +4,7 @@
 
 | 폴더 | 무엇 | 맡는 일 |
 |---|---|---|
-| `pen-browser/` | 크롬 확장 (MV3, HTML+JS, 빌드 없음) | **크롬 안의 일**: 업무포털 메뉴로 나이스·K-에듀파인 창 열기, K-에듀파인 결재·공람 점검, 연 공문 분석(Ollama/PenGPT), 나이스 복무·출장 신청 창 채우기, PenGPT 위치 지정, 도우미 대신 PenGPT 에 묻기, 진단 |
+| `pen-browser/` | 크롬 확장 (MV3, HTML+JS, 빌드 없음) | **크롬 안의 일**: 업무포털 메뉴로 나이스·K-에듀파인 창 열기, K-에듀파인 결재·공람 점검, 연 공문 분석(무료 AI 서비스), 나이스 복무·출장 신청 창 채우기, 진단 |
 | `gongmun-helper/` | 공문작성 도우미 (Python + PyQt5 + pywin32) | **크롬 밖의 일**: K-에듀파인 공문 작성 창(WXSClient.exe)에 AI 초안·제목·본문·결재선·과제카드·수신처 넣기 |
 
 나누는 기준: 크롬 확장은 크롬 밖 프로그램(WXSClient)에 손댈 수 없다. 그래서 공문 작성 창을 다루는 기능은 전부 `gongmun-helper` 에 둔다. **pen-browser 에 공문 작성·결재선·과제카드 기능을 다시 넣지 말 것.** 예전 `pen-helper`(PowerShell 네이티브 메시징 호스트)는 `gongmun-helper` 로 대체되어 없어졌고, 확장의 `nativeMessaging` 권한도 뺐다.
@@ -30,8 +30,8 @@ python -m gongmun
 ## 시험
 
 ```powershell
-cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·PenGPT 대신 묻기·결재선/과제카드 가져오기(29개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능 74개(headless 크롬, 가짜 chrome API)
+cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·무료 AI API·결재선/과제카드 가져오기(30개)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 80개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -44,7 +44,7 @@ python tests\pen-browser\live_reload.py                                 # 확장
 도우미가 `127.0.0.1:47615` 에서 듣고, 확장이 `fetch` 한다.
 
 - `GET /ping` → `{ok, app, version}`. `POST /gongmun {"request"}` → 도우미 ①칸에 채우고 창을 앞으로. **AI 호출·공문 창 입력은 하지 않는다**(사용자가 확인하고 누른다)
-- **도우미의 PenGPT 초안은 거꾸로 흐른다**: PenGPT 는 API 가 없어 도우미가 질문을 `PenBridge` 에 쌓고(`ask_pengpt`), 패널이 2초마다 `POST /ai/next` 로 가져가 `callPenGpt` 로 묻고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 질문(공문 내용)을 담으므로 두 주소 모두 Origin 필수. 작업에는 `kind` 가 붙는다(`pengpt` / `edufine_lists`, 패널은 `HELPER_JOBS` 로 나눈다)
+- **크롬 안의 일은 거꾸로 흐른다**: 결재선·과제카드 읽기는 크롬 탭에서 해야 하므로 도우미가 `edufine_lists` 작업을 `PenBridge` 에 쌓고, 패널이 2초마다 `POST /ai/next` 로 가져가 하고 `POST /ai/result {id, answer|error}` 로 돌려준다. 패널이 8초 넘게 안 가져가면 '패널이 열려 있지 않음'으로 바로 알린다. 두 주소 모두 Origin 필수
 - **나의 결재선·과제카드 가져오기** (`gongmun/edufine_lists.py`): 도우미 ②의 [가져오기] → ① 패널이 열려 있으면 `edufine_lists` 작업으로 교직원 업무도우미가 K-에듀파인 탭(없으면 업무포털로 엶)에서 **개인설정 > 나의결재선관리**(일반 웹 화면 `retrieveMyReportCours.do`, 목록 `select#IDC_LIST_SANCLINE`)와 **과제관리 > 나의과제**(Nexacro 화면 `AAAREGSMYMN001M01` 의 `dsList.tkcrdNm`)를 열어 이름만 읽는다(`inbox.js` 의 `readEdufineLists`) → ② 못 얻은 목록만 열린 공문 작성 창에서 읽는다(`read_appr_lines`: `streReportCours` 콤보, `read_task_cards`: 과제카드 선택 창의 `dsAList` 를 읽고 [닫기]). 가져온 이름으로 목록 설정을 바꾸되 '결재할 사람'·'관련 낱말' 메모는 이름이 같으면 남긴다. 2026. 10. 28. 실제 화면에서 결재선 3개·과제카드 21개 확인
 - **K-에듀파인 화면 열기**: 전체 메뉴 자료 `app.gdsMenu`(menuId·menuNm·progrmCoursAdres)에서 메뉴 이름으로 번호를 찾아 `app.gv_leftFrame.form.gfnOpenMenu(menuId)` — 왼쪽 메뉴를 누를 때와 같은 함수다(`openEdufineMenuInPage`). Nexacro 자료 위치는 설정 > **K-에듀파인 화면 구조 점검**(자료 이름·열 이름, 메뉴 자료는 행까지)으로 찾는다. 결과 글상자를 UI Automation 으로 읽으면 약 1만 자에서 잘린다
 - POST 는 `Origin` 이 `PEN_BROWSER_EXTENSION_IDS` 일 때만 받는다. 웹사이트가 보낸 요청은 Origin 이 달라 거절된다
@@ -104,7 +104,8 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
 
 ## 개인정보
 
-- 공문 초안 AI 는 자체 AI 서버(Ollama) 또는 PenGPT 로만 보낸다(도우미 설정 `ai_provider`). 결재·공람 점검은 Ollama 또는 PenGPT 로만 보낸다(확장). 외부 상용 AI 로 보내지 말 것
+- 공문 초안·결재·공람 점검 AI 는 사용자가 설정에서 고른 **무료 AI 서비스**(Groq·Upstage·OpenRouter·Gemini)로만 보낸다(도우미 `ai_provider`, 확장 `settings.ai.provider`). 무료 AI 목록은 `pen-browser/sidepanel.js` 의 `AI_SERVICES` 와 `gongmun/draft_ai.py` 의 `AI_SERVICES` 두 곳에 있으니 같이 고칠 것. 공문 내용이 그 서비스로 전송되므로 화면 경고를 보여 주고, 학습에 쓰지 않는다고 밝힌 Groq·Upstage 를 권한다. 그 밖의 외부 AI 서비스로 보내지 말 것
+- API 키는 서비스별로 나누어(`keys` / `api_keys`) 도우미 `data/settings.json`·확장 `chrome.storage.local` 에만 저장하고 로그에 남기지 않는다
 - 도우미 설정은 `gongmun-helper/data/settings.json` (gitignore). 확장 설정은 `chrome.storage.local`
 - 로그·콘솔에 공문 내용을 남기지 않는다(`bridge._Handler.log_message` 를 비워 둔 이유)
 

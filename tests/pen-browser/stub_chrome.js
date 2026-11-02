@@ -16,5 +16,5 @@ window.chrome = {
   scripting: { executeScript: async () => { throw new Error('no scripting in test'); } },
   runtime: { onMessage: { addListener: () => {} }, getManifest: () => ({ version: 'test' }), getURL: (p) => p, reload: () => { window.__reloaded = true; }, id: 'test' },
 };
-// 도우미·Ollama 에 실제로 요청하지 않게 막는다
+// 도우미·AI API 에 실제로 요청하지 않게 막는다
 window.fetch = async () => { throw new Error('offline in test'); };

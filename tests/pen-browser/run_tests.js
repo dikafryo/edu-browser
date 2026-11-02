@@ -101,7 +101,7 @@
   menu.remove();
   check('portal tab missing -> clear message', await openFromPortal('나이스', /neis/).then(() => false, (e) => /업무포털 탭을 찾지 못했습니다/.test(e.message)), null);
 
-  // 12. 도우미 PenGPT 대신 묻기: 도우미가 꺼져 있으면 아무것도 하지 않는다
+  // 12. 도우미가 맡긴 일: 도우미가 꺼져 있으면 아무것도 하지 않는다
   check('relay idle when helper offline', (await relayHelperAiJob()) === undefined && $('helperAiMsg').hidden, null);
 
   // 13. 나이스 승인요청·결재선·비상연락처 (가짜 eXBuilder 화면)
@@ -276,11 +276,22 @@
   check('my approval lines from 나의결재선관리 list', readMyApprLinesInPage(EDUFINE_LINE_SCREEN.select).join('/') === '관/관장/품의', null);
   lineBox.remove();
   check('approval lines null on other pages', readMyApprLinesInPage(EDUFINE_LINE_SCREEN.select) === null, null);
-  check('helper job kinds', Object.keys(HELPER_JOBS).join() === 'pengpt,edufine_lists'
+  check('helper job kinds', Object.keys(HELPER_JOBS).join() === 'edufine_lists'
     && [readMyTaskCardsInPage, readMyApprLinesInPage, openEdufineMenuInPage].every((fn) => !/\$\(|chrome\./.test(fn.toString())), null);
 
   // 15. 기타
-  check('ollama empty url guarded', (() => { try { ollamaBaseUrl(); return false; } catch (e) { return /Ollama 주소/.test(e.message); } })(), null);
+  check('ai services start with groq', AI_SERVICES[0].id === 'groq' && AI_SERVICES.length >= 4, AI_SERVICES.map((s) => s.id));
+  check('ai service fallback', serviceFor('없는서비스').id === 'groq', null);
+  check('ai key guarded', (() => { try { aiKeyFor('groq'); return false; } catch (e) { return /API 키/.test(e.message); } })(), null);
+  check('ai status messages', /API 키/.test(aiErrorMessage(401)) && /무료 사용량/.test(aiErrorMessage(429)), aiErrorMessage(401));
+  check('ai default settings', DEFAULT_AI.provider === 'groq' && Object.keys(DEFAULT_AI.keys).length === 0, DEFAULT_AI);
+  check('ai provider select filled', $('aiProvider').options.length === AI_SERVICES.length && $('aiProvider').value === settings.ai.provider, $('aiProvider').value);
+  const savedProvider = settings.ai.provider;
+  $('aiProvider').value = 'upstage';
+  $('aiProvider').dispatchEvent(new Event('change'));
+  check('provider change shows key help', /console\.upstage\.ai/.test($('aiKeyHelp').textContent) && settings.ai.provider === 'upstage', $('aiKeyHelp').textContent);
+  $('aiProvider').value = savedProvider;
+  $('aiProvider').dispatchEvent(new Event('change'));
   check('helper pill shows offline', $('helperStatus').textContent === '공문헬퍼 꺼짐', $('helperStatus').textContent);
   check('no script errors', window.__errors.length === 0, window.__errors);
   $('testOut').textContent = out.join('\n') + '\nSUMMARY ' + out.filter((l) => l.startsWith('PASS')).length + '/' + out.length;

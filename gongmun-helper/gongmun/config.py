@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-VERSION = "26.1028.9"
+VERSION = "26.1102.2"
 APP_NAME = f"공문작성 도우미 v{VERSION}"
 
 # 교직원 업무도우미(크롬 확장) 연결 — bridge.py.
@@ -23,9 +23,8 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 
 DEFAULT_SETTINGS = {
     "org_name":     "",   # 기관·부서 (AI 초안에 넣는다)
-    "ai_provider":  "ollama",  # "ollama"(자체 AI 서버) 또는 "pengpt"(교직원 업무도우미가 PenGPT 탭에 대신 물음)
-    "ollama_url":   "",   # 공문 내용은 외부 AI 가 아닌 자체 AI 서버·PenGPT 로만 보낸다
-    "ollama_model": "",
+    "ai_provider":  "groq",  # draft_ai.AI_SERVICES 의 id (groq·upstage·openrouter·gemini)
+    "api_keys":     {},      # {서비스 id: API 키} — 이 PC 의 data/settings.json 에만 저장된다
     "appr_lines":   "",   # '나의 결재선 이름: 사람, 사람' 한 줄에 하나
     "task_cards":   "",   # '과제카드명 | 관련 낱말' 한 줄에 하나
 }
@@ -40,7 +39,14 @@ def load_settings():
         saved = {}
     if not isinstance(saved, dict):
         saved = {}
-    return {key: saved.get(key, default) for key, default in DEFAULT_SETTINGS.items()}
+    settings = {key: saved.get(key, default) for key, default in DEFAULT_SETTINGS.items()}
+    keys = settings.get("api_keys")
+    settings["api_keys"] = {
+        str(provider): str(key).strip()
+        for provider, key in (keys.items() if isinstance(keys, dict) else [])
+        if str(key).strip()
+    }
+    return settings
 
 
 def save_settings(settings):

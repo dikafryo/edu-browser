@@ -1,15 +1,15 @@
 """목록·AI 설정 다이얼로그.
 
-기관·부서, 결재선 목록, 과제카드 목록, AI(자체 AI 서버 또는 PenGPT)를 한 화면에서 고친다.
+기관·부서, 결재선 목록, 과제카드 목록, 무료 AI 서비스를 한 화면에서 고친다.
 값은 data/settings.json 에 저장된다(PC 안에만 남음).
 """
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QWidget,
-    QLineEdit, QComboBox, QPlainTextEdit, QDialogButtonBox, QMessageBox, QRadioButton, QButtonGroup,
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox,
+    QPlainTextEdit, QDialogButtonBox,
 )
 from PyQt5.QtCore import Qt
 
-from gongmun.draft_ai import AI_PROVIDERS, list_models
+from gongmun.draft_ai import AI_SERVICES, service_for
 
 HELP_STYLE = "color: #7f8c8d; font-size: 11px;"
 
@@ -49,51 +49,34 @@ class SettingsDialog(QDialog):
             "AI 가 초안을 만들 때 이 목록에서 알맞은 카드를 골라 둡니다. "
             "[가져오기]로 채운 뒤 | 뒤에 관련 낱말을 덧붙이면 다시 가져와도 남습니다."))
 
-        layout.addWidget(QLabel("<b>AI</b> — 공문 초안을 누구에게 맡길까요?"))
-        self.provider_group = QButtonGroup(self)
-        self.provider_radios = {}
-        for key, label in AI_PROVIDERS.items():
-            radio = QRadioButton(label)
-            self.provider_group.addButton(radio)
-            self.provider_radios[key] = radio
-            layout.addWidget(radio)
-        saved_provider = settings.get("ai_provider", "ollama")
-        self.provider_radios.get(saved_provider, self.provider_radios["ollama"]).setChecked(True)
+        layout.addWidget(QLabel("<b>AI</b> — 공문 초안을 맡길 무료 AI 서비스"))
+        self.api_keys = dict(settings.get("api_keys") or {})
+        self.provider_combo = QComboBox()
+        for service in AI_SERVICES:
+            self.provider_combo.addItem(service["name"], service["id"])
+        self.provider_combo.setCurrentIndex(max(0, self.provider_combo.findData(settings.get("ai_provider"))))
+        layout.addWidget(self.provider_combo)
 
-        self.ollama_box = QWidget()
-        ollama_layout = QVBoxLayout(self.ollama_box)
-        ollama_layout.setContentsMargins(0, 0, 0, 0)
-        url_row = QHBoxLayout()
-        url_row.addWidget(QLabel("주소:"))
-        self.url_edit = QLineEdit(settings.get("ollama_url", ""))
-        self.url_edit.setPlaceholderText("예) http://100.64.0.1:11434")
-        url_row.addWidget(self.url_edit, 1)
-        ollama_layout.addLayout(url_row)
+        self.key_help = self._help("")
+        layout.addWidget(self.key_help)
 
-        model_row = QHBoxLayout()
-        model_row.addWidget(QLabel("모델:"))
-        self.model_combo = QComboBox()
-        self.model_combo.setEditable(True)
-        saved_model = settings.get("ollama_model", "")
-        if saved_model:
-            self.model_combo.addItem(saved_model)
-        model_row.addWidget(self.model_combo, 1)
-        load_btn = QPushButton("모델 불러오기")
-        load_btn.clicked.connect(self.load_models)
-        model_row.addWidget(load_btn)
-        ollama_layout.addLayout(model_row)
-        ollama_layout.addWidget(self._help(
-            "공문 요청은 이 주소의 자체 AI 서버(Ollama)로만 보냅니다(외부 AI 로 보내지 않음). "
-            "추천 모델: exaone3.5:7.8b 또는 gemma3:12b"))
-        layout.addWidget(self.ollama_box)
+        key_row = QHBoxLayout()
+        key_row.addWidget(QLabel("API 키:"))
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit.setPlaceholderText("공급자 사이트에서 발급받은 키")
+        key_row.addWidget(self.api_key_edit, 1)
+        layout.addLayout(key_row)
 
-        self.pengpt_help = self._help(
-            "크롬의 교직원 업무도우미 패널이 열려 있는 동안, 패널이 열어 둔 PenGPT 탭에 대신 묻고 답을 가져옵니다. "
-            "PenGPT 에 로그인한 탭을 열어 두고, 교직원 업무도우미 설정 > AI 연결 > PenGPT 에서 위치 지정을 한 번 해 두세요. "
-            "내용이 교육청 PenGPT 로 전송됩니다.")
-        layout.addWidget(self.pengpt_help)
-        self.provider_group.buttonToggled.connect(self._show_provider)
-        self._show_provider()
+        self.data_note = self._help("")
+        layout.addWidget(self.data_note)
+        layout.addWidget(self._help(
+            "공문의 업무 내용이 선택한 서비스로 전송됩니다. 무료 등급 중에는 학습에 쓰는 곳도 있으니 "
+            "아래 안내를 확인하세요. 키는 이 PC 의 설정 파일에만 저장됩니다."))
+
+        self._last_provider = ""
+        self.provider_combo.currentIndexChanged.connect(self._show_service)
+        self._show_service()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Save).setText("저장")
@@ -108,38 +91,26 @@ class SettingsDialog(QDialog):
         label.setStyleSheet(HELP_STYLE)
         return label
 
-    def selected_provider(self):
-        return next(key for key, radio in self.provider_radios.items() if radio.isChecked())
+    def _current_service(self):
+        return service_for(self.provider_combo.currentData())
 
-    def _show_provider(self, *args):
-        use_ollama = self.selected_provider() == "ollama"
-        self.ollama_box.setVisible(use_ollama)
-        self.pengpt_help.setVisible(not use_ollama)
-
-    def load_models(self):
-        url = self.url_edit.text().strip()
-        if not url:
-            QMessageBox.warning(self, "안내", "자체 AI 서버(Ollama) 주소를 먼저 적어 주세요.")
-            return
-        try:
-            models = list_models(url)
-        except Exception:
-            QMessageBox.warning(self, "연결 실패",
-                                "자체 AI 서버(Ollama)에 연결하지 못했습니다. 서버(맥북)가 켜져 있고 주소가 맞는지 확인해 주세요.")
-            return
-        current = self.model_combo.currentText()
-        self.model_combo.clear()
-        self.model_combo.addItems(models)
-        if current in models:
-            self.model_combo.setCurrentText(current)
-        QMessageBox.information(self, "완료", f"모델 {len(models)}개를 찾았습니다. 하나를 고른 뒤 저장을 눌러 주세요.")
+    def _show_service(self, *args):
+        # 서비스를 바꾸기 전에 입력하던 키를 그 서비스의 키로 남겨 둔다
+        if self._last_provider:
+            self.api_keys[self._last_provider] = self.api_key_edit.text().strip()
+        service = self._current_service()
+        self._last_provider = service["id"]
+        self.api_key_edit.setText(self.api_keys.get(service["id"], ""))
+        self.key_help.setText(service["key_help"])
+        self.data_note.setText(service["data_note"])
 
     def get_values(self):
+        service = self._current_service()
+        self.api_keys[service["id"]] = self.api_key_edit.text().strip()
         return {
             "org_name": self.org_edit.text().strip(),
             "appr_lines": self.appr_edit.toPlainText().strip(),
             "task_cards": self.task_edit.toPlainText().strip(),
-            "ai_provider": self.selected_provider(),
-            "ollama_url": self.url_edit.text().strip().rstrip("/"),
-            "ollama_model": self.model_combo.currentText().strip(),
+            "ai_provider": service["id"],
+            "api_keys": {provider: key for provider, key in self.api_keys.items() if key},
         }

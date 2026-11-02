@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from gongmun import config
-from gongmun.draft_ai import build_draft_prompt, extract_json, parse_task_cards, request_draft, suggest_task_card
+from gongmun.draft_ai import AI_SERVICES, build_draft_prompt, extract_json, api_asker, parse_task_cards, request_draft, service_for, suggest_task_card
 from gongmun.edufine_lists import parse_approval_lines
 from gongmun.panel import parse_recipients
 
@@ -62,7 +62,7 @@ class PromptTest(unittest.TestCase):
         self.assertIn("요청: 연수 안내", prompt)
 
     def test_request_draft_with_any_ai(self):
-        """자체 AI 서버든 PenGPT 든 ask(system, user) 하나로 묻고, 답은 같은 방식으로 읽는다."""
+        """어떤 AI 서비스든 ask(system, user) 하나로 묻고, 답은 같은 방식으로 읽는다."""
         asked = []
 
         def fake_ask(system, user):
@@ -73,6 +73,31 @@ class PromptTest(unittest.TestCase):
         self.assertEqual(draft["body"], "1. 줄\n2. 줄")
         self.assertEqual(draft["taskCard"], "특성화고노동인권교육")
         self.assertIn("요청: 노동인권 연수", asked[0])
+
+
+class ApiAskerTest(unittest.TestCase):
+    def test_reads_choice_and_sends_key(self):
+        response = mock.Mock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": '{"title": "가"}'}}]}
+        with mock.patch("requests.post", return_value=response) as post:
+            answer = api_asker("https://api.example.com/v1/", "secret", "m")("system", "user")
+        self.assertEqual(answer, '{"title": "가"}')
+        self.assertEqual(post.call_args[0][0], "https://api.example.com/v1/chat/completions")
+        self.assertEqual(post.call_args[1]["headers"]["Authorization"], "Bearer secret")
+        self.assertEqual(post.call_args[1]["json"]["model"], "m")
+
+    def test_bad_key_message(self):
+        response = mock.Mock(status_code=401)
+        with mock.patch("requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "API 키"):
+                api_asker("https://api.example.com/v1", "k", "m")("system", "user")
+
+    def test_services_list_and_fallback(self):
+        ids = [service["id"] for service in AI_SERVICES]
+        self.assertEqual(ids[0], "groq")
+        self.assertIn("upstage", ids)
+        self.assertEqual(service_for("없는 서비스")["id"], "groq")
+        self.assertTrue(all(service["base_url"].startswith("https://") for service in AI_SERVICES))
 
 
 class SettingsFileTest(unittest.TestCase):

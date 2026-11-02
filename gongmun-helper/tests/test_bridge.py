@@ -96,8 +96,8 @@ class BridgeTest(unittest.TestCase):
         self.assertFalse(bridge.PenBridge().start())
 
     def ask_with_fake_panel(self, panel_reply, ask=None):
-        """도우미가 패널에 일을 맡기면(기본은 PenGPT 질문), 가짜 패널이 /ai/next 로 가져가 /ai/result 로 답한다."""
-        ask = ask or (lambda: self.bridge.ask_pengpt("시스템", "질문", timeout=10))
+        """도우미가 패널에 일을 맡기면, 가짜 패널이 /ai/next 로 가져가 /ai/result 로 답한다."""
+        ask = ask or (lambda: self.bridge.ask_edufine_lists(timeout=10))
         request("/ai/next", {}, EXTENSION_ORIGIN)  # 패널이 열려 있다는 신호
         seen = {}
 
@@ -119,24 +119,12 @@ class BridgeTest(unittest.TestCase):
         finally:
             worker.join()
 
-    def test_pengpt_relay_answer(self):
-        answer, seen = self.ask_with_fake_panel({"answer": '{"title":"제목"}'})
-        self.assertEqual(answer, '{"title":"제목"}')
-        self.assertEqual((seen["job"]["kind"], seen["job"]["system"], seen["job"]["user"]), ("pengpt", "시스템", "질문"))
-        _, body = request("/ai/next", {}, EXTENSION_ORIGIN)
-        self.assertIsNone(body["job"])  # 한 번 가져간 질문은 다시 내주지 않는다
-
-    def test_pengpt_relay_error(self):
-        error, _ = self.ask_with_fake_panel({"error": "PenGPT 탭을 찾지 못했습니다."})
-        self.assertIsInstance(error, RuntimeError)
-        self.assertIn("PenGPT 탭을 찾지 못했습니다", str(error))
-
-    def test_pengpt_needs_open_panel_and_extension_origin(self):
+    def test_panel_closed_and_extension_origin(self):
         status, _ = request("/ai/next", {}, "https://evil.example")
-        self.assertEqual(status, 403)  # 웹사이트는 쌓인 질문(공문 내용)을 가져갈 수 없다
+        self.assertEqual(status, 403)  # 웹사이트는 쌓인 요청을 가져갈 수 없다
         with mock.patch.object(bridge.time, "monotonic", return_value=10 ** 9):
             with self.assertRaises(RuntimeError) as caught:
-                self.bridge.ask_pengpt("시스템", "질문", timeout=1)
+                self.bridge.ask_edufine_lists(timeout=1)
         self.assertIn("패널이 열려 있지 않습니다", str(caught.exception))
 
     def test_edufine_lists_relay(self):
