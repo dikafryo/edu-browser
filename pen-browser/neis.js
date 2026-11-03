@@ -98,16 +98,16 @@ function hoursBetween(input) {
   return (end - start) / 3600000;
 }
 
-/* 설정의 복무 종류별 결재선(NEIS_LINE_KINDS) 중 이 신청에 쓸 종류.
-   지각은 조퇴와 같은 짧은 복무로, 병가·공가·특별휴가 등 나머지 근무상황은 연가와 같은 결재로 본다 */
+/* 설정의 두 결재선 묶음 중 이 신청에 쓸 묶음.
+   연가·종일출장·연수는 '연가', 조퇴·외출·출장·지각은 '조퇴' 묶음을 쓴다 */
 function neisLineKind(input) {
   if (input.kind === 'trip') {
-    if (input.tripKind === '출장(연수)') return '연수';
+    if (input.tripKind === '출장(연수)') return '연가';
     const fullDay = input.fromDate !== input.toDate || hoursBetween(input) >= FULL_DAY_TRIP_HOURS;
-    return fullDay ? '종일출장' : '출장';
+    return fullDay ? '연가' : '조퇴';
   }
-  if (input.major === '연수') return '연수';
-  if (/외출/.test(input.minor)) return '외출';
+  if (input.major === '연수') return '연가';
+  if (/외출/.test(input.minor)) return '조퇴';
   if (/조퇴|지각/.test(input.minor)) return '조퇴';
   return '연가';
 }
@@ -639,7 +639,7 @@ function showSubmitEnd(step, lineName, lineKind) {
   } else if (step.state === 'submit') {
     showNotice($('neisMsg'), 'warn', lineName
       ? `${lineKind} 결재선 '${lineName}'을(를) 지정하지 못했습니다. 나이스 상신 화면의 [개인결재선]에서 결재선을 고르고 [지정]을 누른 뒤 [상신]을 눌러 주세요. 설정의 결재선 이름이 나이스와 같은지도 확인해 주세요.`
-      : `상신 화면이 열렸습니다. [개인결재선]에서 결재선을 고르고 [지정]을 누른 뒤 [상신]을 눌러 주세요. 설정 > 복무 종류별 결재선에서 '${lineKind}' 결재선을 골라 두면 다음부터 지정해 둡니다.`);
+      : `상신 화면이 열렸습니다. [개인결재선]에서 결재선을 고르고 [지정]을 누른 뒤 [상신]을 눌러 주세요. 설정에서 '${lineKind}' 결재선을 골라 두면 다음부터 지정해 둡니다.`);
     renderInfoLines(step.lineNames.length ? [`나이스의 결재선 목록: ${step.lineNames.join(' · ')}`] : []);
   } else if (step.state === 'closed') {
     showNotice($('neisMsg'), 'info', '신청 창이 닫혔습니다. 취소했다면 내용을 고쳐 다시 넣어 주세요.');
@@ -723,14 +723,13 @@ async function learnLineNames(names) {
   if (merged.length === settings.neis.lineNames.length) return;
   settings.neis.lineNames = merged;
   await saveSettings();
-  $('neisLineNames').value = merged.join('\n');
   renderNeisLineMap(merged, settings.neis.lines);
 }
 
 async function handleFetchNeisLines() {
   await withBusy($('fetchNeisLinesBtn'), '가져오는 중…', async () => {
     try {
-      showNotice($('neisLineMsg'), 'info', '나이스 창을 열고 상신함 > 개인결재선 등록 화면에서 결재선을 읽는 중입니다…');
+      showNotice($('neisLineMsg'), 'info', '나이스에서 결재선을 읽는 중입니다…');
       const tab = await getNeisTab();
       const reply = await runInNeis(tab, neisPageReadLines, [NEIS_LINE_MENU]);
       if (!reply.ok) {
@@ -738,7 +737,7 @@ async function handleFetchNeisLines() {
         throw new Error(reply.problem + detail);
       }
       await learnLineNames(reply.names);
-      showNotice($('neisLineMsg'), 'ok', `나이스 결재선 ${reply.names.length}개를 목록에 넣었습니다. 아래에서 복무 종류별로 고른 뒤 [설정 저장]을 눌러 주세요.`);
+      showNotice($('neisLineMsg'), 'ok', `결재선 ${reply.names.length}개를 가져왔습니다. 두 콤보에서 고른 뒤 [설정 저장]을 누르세요.`);
     } catch (error) {
       showNotice($('neisLineMsg'), 'error', error.message);
     }
@@ -755,7 +754,7 @@ async function handleNeisSubmit() {
       const started = await runInNeis(tab, neisPageSubmit, [NEIS_FORMS, input.kind]);
       if (!started.ok) throw new Error(started.problem);
       // 패널에서 고른 종류와 열린 신청 창이 다르면 패널 내용으로 종류를 가릴 수 없어 기본 종류를 쓴다
-      const lineKind = started.kind === input.kind ? neisLineKind(input) : (started.kind === 'trip' ? '출장' : '연가');
+      const lineKind = started.kind === input.kind ? neisLineKind(input) : (started.kind === 'trip' ? '조퇴' : '연가');
       const lineName = settings.neis.lines[lineKind] || '';
       await focusTab(tab);
       showSubmitStep({ state: 'waiting' });

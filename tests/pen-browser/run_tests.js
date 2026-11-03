@@ -218,28 +218,29 @@
   check('watch: form closed', watch('관').state === 'closed', null);
   delete window.cpr;
 
-  // 복무 종류별 결재선: 보통 조퇴·외출·출장 / 연가·종일출장 두 묶음
-  $('neisLineNames').value = ' 짧은 복무 \n하루 복무\n\n짧은 복무';
-  $('neisLineNames').dispatchEvent(new Event('input'));
-  check('line map has six kinds with names', $('neisLineMap').querySelectorAll('select').length === 6 && $('neisLine-조퇴').options.length === 3, $('neisLineMap').innerHTML.length);
-  ['조퇴', '외출', '출장'].forEach((kind) => { $(`neisLine-${kind}`).value = '짧은 복무'; });
-  ['연가', '종일출장'].forEach((kind) => { $(`neisLine-${kind}`).value = '하루 복무'; });
+  // 결재선 두 묶음: 연가·종일출장·연수 / 조퇴·외출·출장·지각
+  await learnLineNames([' 짧은 복무 ', '하루 복무', '짧은 복무']);
+  check('line map has two groups with names', document.querySelectorAll('.line-row select').length === 2 && $('neisLine-조퇴').options.length === 3, $('neisLine-조퇴').options.length);
+  $('neisLine-조퇴').value = '짧은 복무';
+  $('neisLine-연가').value = '하루 복무';
   $('neisPhone').value = '010-0000-0000';
   readSettingsForm();
-  check('neis settings read', settings.neis.lineNames.join('/') === '짧은 복무/하루 복무' && settings.neis.lines['외출'] === '짧은 복무'
-    && settings.neis.lines['종일출장'] === '하루 복무' && settings.neis.lines['연수'] === '' && settings.neis.phone === '010-0000-0000', settings.neis);
-  check('old single line setting carries over', neisDefaults({ lineName: '예전 결재선' }).lines['연수'] === '예전 결재선', null);
+  check('neis settings read', settings.neis.lineNames.join('/') === '짧은 복무/하루 복무' && settings.neis.lines['조퇴'] === '짧은 복무'
+    && settings.neis.lines['연가'] === '하루 복무' && settings.neis.phone === '010-0000-0000', settings.neis);
+  check('old single line setting carries over', neisDefaults({ lineName: '예전 결재선' }).lines['연가'] === '예전 결재선', null);
+  check('old six kinds carry over', neisDefaults({ lines: { '종일출장': '하루', '외출': '짧은' } }).lines['연가'] === '하루'
+    && neisDefaults({ lines: { '종일출장': '하루', '외출': '짧은' } }).lines['조퇴'] === '짧은', null);
   const day = { kind: 'leave', fromDate: '2026-12-30', toDate: '2026-12-30', fromTime: '09:00', toTime: '18:00' };
   const kindOf = (extra) => neisLineKind({ ...day, ...extra });
   check('line kind by request', [
     kindOf({ major: '연가', minor: '연가' }) === '연가', kindOf({ major: '연가', minor: '반일연가' }) === '연가',
     kindOf({ major: '연가', minor: '조퇴' }) === '조퇴', kindOf({ major: '병가', minor: '병지각' }) === '조퇴',
-    kindOf({ major: '연가', minor: '외출' }) === '외출', kindOf({ major: '병가', minor: '병가' }) === '연가',
-    kindOf({ major: '연수', minor: '교육공무원법제41조연수' }) === '연수',
-    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', fromTime: '14:00', toTime: '17:00' }) === '출장',
-    kindOf({ kind: 'trip', tripKind: '국내출장(관외)' }) === '종일출장',
-    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', toDate: '2026-12-31', fromTime: '15:00', toTime: '10:00' }) === '종일출장',
-    kindOf({ kind: 'trip', tripKind: '출장(연수)' }) === '연수',
+    kindOf({ major: '연가', minor: '외출' }) === '조퇴', kindOf({ major: '병가', minor: '병가' }) === '연가',
+    kindOf({ major: '연수', minor: '교육공무원법제41조연수' }) === '연가',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', fromTime: '14:00', toTime: '17:00' }) === '조퇴',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관외)' }) === '연가',
+    kindOf({ kind: 'trip', tripKind: '국내출장(관내)', toDate: '2026-12-31', fromTime: '15:00', toTime: '10:00' }) === '연가',
+    kindOf({ kind: 'trip', tripKind: '출장(연수)' }) === '연가',
   ].every(Boolean), null);
   check('open-only button replaced', !document.getElementById('openNeisBtn') && $('neisSubmitBtn').textContent === '승인요청', null);
 

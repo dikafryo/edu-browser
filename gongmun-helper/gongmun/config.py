@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-VERSION = "26.1102.2"
+VERSION = "26.1102.3"
 APP_NAME = f"공문작성 도우미 v{VERSION}"
 
 # 교직원 업무도우미(크롬 확장) 연결 — bridge.py.

@@ -31,7 +31,7 @@ python -m gongmun
 
 ```powershell
 cd gongmun-helper; .\venv\Scripts\python -m unittest discover -s tests   # 목록 해석·설정 파일·연결 통로·무료 AI API·결재선/과제카드 가져오기(30개)
-python tests\pen-browser\run.py                                         # 확장 패널 기능 80개(headless 크롬, 가짜 chrome API)
+python tests\pen-browser\run.py                                         # 확장 패널 기능 81개(headless 크롬, 가짜 chrome API)
 python tests\pen-browser\live_reload.py                                 # 확장을 실제로 올려 새 판 반영 확인(2~3분, pip install websocket-client)
 ```
 
@@ -86,7 +86,7 @@ WXSClient 는 32비트 MFC 창 + IE 화면 + 한글 편집기 부품이다. 창 
   1. 승인요청 → 같은 기간 신청이 있으면 확인 창(`confirmDlg`, GA-SRV-0121) → 저장 → `doOpenDrft` 가 기안(상신) 창 `edu/cm/wam/woa/pm/wam_woapm07_p00` 을 연다(닫히면 신청 창도 닫힘). 확인 창은 글자·버튼을 패널에 보여 주고 사용자가 고르기를 기다린다(창이 사라지고 `CANCEL_QUIET_POLLS`초 새 화면이 없으면 취소로 본다 — 저장·기안 창 불러오기보다 길게)
   2. 기안 창의 `btnSelectMySancr`([개인결재선]) → 고르기 창 `wam_woapm07_p02`: 왼쪽 `grd3`(`snclnNm`)에서 행을 `selectRows(row)` 하고 `btnSearch` 를 눌러야 결재자 표 `grd2` 가 채워진다 → `btn4`([지정])를 누르면 창이 닫히며 기안 창의 `dsSancr` 에 들어간다. `btnDrft`([상신])는 누르지 않는다
   3. `neisPageWatch` 는 1초마다 불려 한 번에 한 단계만 하고, 진행 상태는 앱 객체(`penLineOpened`·`penPickedRow`·`penLineDone` 등)에 남긴다. 이름이 없으면 고르기 창을 열어 둔 채 사용자에게 맡긴다. 앱 id·칸 이름은 `NEIS_DRAFT` 한곳에 있다. 2026. 10. 28. 고르기 창을 따로 띄워 고르기 → 조회 → 결재자 2명 → [지정] 버튼 존재까지 실제 확인(지정 대신 닫기), 기안 창 전체 흐름은 실제 승인요청이 필요해 미확인
-  결재선은 복무 종류(`NEIS_LINE_KINDS`: 연가·조퇴·외출·출장·종일출장·연수)마다 설정에서 고르고 `neisLineKind` 가 신청 내용으로 종류를 정한다(지각→조퇴, 병가·공가·특별휴가→연가, 하루를 넘기거나 7시간 이상 출장→종일출장, 출장(연수)·연수 대분류→연수). 결재선 이름 목록은 설정의 [나이스에서 결재선 가져오기](상신함 > 개인결재선 등록 화면을 열어 표에서 결재선명 열을 고름, `neisPageReadLines`)나 고르기 창에서 읽어 더한다(`learnLineNames`). 예전 판의 단일 `lineName` 은 모든 종류로 옮긴다(`neisDefaults`)
+  결재선은 설정에서 **두 묶음**으로만 고른다(`NEIS_LINE_GROUPS`): `연가`(연가·종일출장·연수)와 `조퇴`(조퇴·외출·출장·지각). `neisLineKind` 가 신청 내용으로 묶음을 정한다(지각→조퇴, 병가·공가·특별휴가→연가, 하루를 넘기거나 7시간 이상 출장→연가, 출장(연수)·연수 대분류→연가). 결재선 이름 목록은 설정의 [가져오기](상신함 > 개인결재선 등록 화면을 열어 표에서 결재선명 열을 고름, `neisPageReadLines`)나 고르기 창에서 읽어 콤보에 더한다(`learnLineNames`). 예전 판의 여섯 종류·단일 `lineName` 은 `neisDefaults` 가 두 묶음으로 옮긴다
 - **콤보는 `selectItemByValue`** 로 골라야 화면의 연결 동작(소분류 갱신·신청시간 계산)이 돈다. `.value =` 는 이벤트가 없다. 날짜·글자는 `putValue`
 - **신청 창이 처음 자료를 다 받기 전에 넣으면 기본값(오늘 09:00)으로 덮어쓴다.** 대분류/출장종류 콤보에 항목이 차고 `grdMain` 에 행이 생긴 뒤 1.2초 더 기다린다. 끝나면 모든 칸을 다시 읽어 되돌려진 칸은 실패로 알린다
 - 출장 기간을 데이터셋(`dataSet.setValue`)에 바로 쓰면 날짜는 바뀌어도 신청시간이 다시 계산되지 않는다 → 편집칸 컨트롤로 넣는다
